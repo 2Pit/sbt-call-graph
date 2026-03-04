@@ -29,13 +29,15 @@ object JsonOutput {
   def writeViaResult(
       result: QueryEngine.ViaResult,
       vertex: String,
+      depth: Int,
       graph: LoadedGraph,
       outFile: Path,
   ): Path = {
     val json = obj(
-      "vertex"  -> str(vertex),
-      "callers" -> arr(result.callers.map(nodeJson(_, graph)).toSeq),
-      "callees" -> arr(result.callees.map(nodeJson(_, graph)).toSeq),
+      "query"  -> obj("vertex" -> str(vertex), "depth" -> depth.toString),
+      "vertex" -> nodeJson(vertex, graph),
+      "in"     -> arr(result.in.map(n => depthNodeJson(n, graph))),
+      "out"    -> arr(result.out.map(n => depthNodeJson(n, graph))),
     )
     write(outFile, json)
   }
@@ -64,11 +66,33 @@ object JsonOutput {
         obj("id" -> str(id))
     }
 
+  private def depthNodeJson(node: QueryEngine.DepthNode, graph: LoadedGraph): String =
+    graph.meta.get(node.id) match {
+      case Some(m) =>
+        obj(
+          "id"          -> str(node.id),
+          "displayName" -> str(m.displayName),
+          "file"        -> str(m.file),
+          "startLine"   -> (m.startLine + 1).toString,
+          "endLine"     -> (m.endLine + 1).toString,
+          "depth"       -> node.depth.toString,
+        )
+      case None =>
+        obj("id" -> str(node.id), "depth" -> node.depth.toString)
+    }
+
   private def str(s: String): String =
     "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n") + "\""
 
   private def obj(fields: (String, String)*): String =
-    fields.map { case (k, v) => s"  ${str(k)}: $v" }.mkString("{\n", ",\n", "\n}")
+    fields.map { case (k, v) =>
+      val lines = v.split("\n", -1)
+      if (lines.length == 1) s"  ${str(k)}: $v"
+      else {
+        val rest = lines.tail.map("  " + _).mkString("\n")
+        s"  ${str(k)}: ${lines.head}\n$rest"
+      }
+    }.mkString("{\n", ",\n", "\n}")
 
   private def arr(items: Seq[String]): String =
     if (items.isEmpty) "[]"

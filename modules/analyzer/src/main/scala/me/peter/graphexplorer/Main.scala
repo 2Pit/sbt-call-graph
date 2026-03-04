@@ -61,7 +61,7 @@ object Main extends App {
           sys.exit(1)
         case Some(result) =>
           val outFile = semanticdbDir.getParent.resolve("graph-last-result.json")
-          val written = JsonOutput.writeViaResult(result, vertex, graph, outFile)
+          val written = JsonOutput.writeViaResult(result, vertex, maxDepth, graph, outFile)
           println(written.toAbsolutePath.toString)
       }
 

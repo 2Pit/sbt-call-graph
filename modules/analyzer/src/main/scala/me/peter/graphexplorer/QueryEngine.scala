@@ -32,14 +32,11 @@ object QueryEngine {
     val results   = mutable.ListBuffer.empty[Seq[String]]
     var truncated = false
 
-    // BFS with path tracking; visited per-path to allow simple paths only
-    // Each element: (currentNode, pathSoFar, visitedSet)
     val queue = mutable.Queue.empty[(String, List[String], Set[String])]
     queue.enqueue((from, List(from), Set(from)))
 
     while (queue.nonEmpty && !truncated) {
       val (node, path, visited) = queue.dequeue()
-
       if (path.size - 1 < maxDepth) {
         graph.out.getOrElse(node, Set.empty).foreach { next =>
           if (!visited.contains(next)) {
@@ -58,16 +55,63 @@ object QueryEngine {
     PathResult(results.toSeq, truncated)
   }
 
-  final case class ViaResult(
-    callers: Set[String], // methods that call V
-    callees: Set[String], // methods that V calls
-  )
+  /** Node annotated with its BFS depth from the queried vertex. */
+  final case class DepthNode(id: String, depth: Int)
 
-  /** Return the immediate neighbourhood of vertex `v`. */
-  def viaVertex(graph: LoadedGraph, v: String): Option[ViaResult] =
+  /**
+   * @param in   methods that (transitively) call V, sorted by (depth, file, startLine)
+   * @param out  methods that V (transitively) calls, sorted by (depth, file, startLine)
+   */
+  final case class ViaResult(in: Seq[DepthNode], out: Seq[DepthNode])
+
+  /**
+   * Return the neighbourhood of vertex `v` up to `depth` BFS hops in each direction.
+   * Results are sorted by (depth asc, file asc, startLine asc).
+   */
+  def viaVertex(graph: LoadedGraph, v: String, depth: Int = 2): Option[ViaResult] =
     if (!graph.meta.contains(v)) None
     else Some(ViaResult(
-      callers = graph.in.getOrElse(v, Set.empty),
-      callees = graph.out.getOrElse(v, Set.empty),
+      in  = bfsWithDepth(v, depth, graph.in,  graph.meta),
+      out = bfsWithDepth(v, depth, graph.out, graph.meta),
     ))
+
+  private def bfsWithDepth(
+    start: String,
+    depth: Int,
+    edges: Map[String, Set[String]],
+    meta:  Map[String, NodeMeta],
+  ): Seq[DepthNode] = {
+    val visited = mutable.Map.empty[String, Int] // node -> hop count
+    val queue   = mutable.Queue.empty[(String, Int)]
+
+    edges.getOrElse(start, Set.empty).foreach { n =>
+      visited(n) = 1
+      queue.enqueue((n, 1))
+    }
+
+    while (queue.nonEmpty) {
+      val (node, hops) = queue.dequeue()
+      if (hops < depth) {
+        edges.getOrElse(node, Set.empty).foreach { next =>
+          if (!visited.contains(next)) {
+            visited(next) = hops + 1
+            queue.enqueue((next, hops + 1))
+          }
+        }
+      }
+    }
+
+    visited.toSeq
+      .map { case (id, d) => DepthNode(id, d) }
+      .sortWith { (a, b) =>
+        if (a.depth != b.depth) a.depth < b.depth
+        else {
+          val fa = meta.get(a.id).map(_.file).getOrElse("")
+          val fb = meta.get(b.id).map(_.file).getOrElse("")
+          if (fa != fb) fa < fb
+          else meta.get(a.id).map(_.startLine).getOrElse(0) <
+               meta.get(b.id).map(_.startLine).getOrElse(0)
+        }
+      }
+  }
 }

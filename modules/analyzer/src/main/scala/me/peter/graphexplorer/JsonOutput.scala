@@ -5,31 +5,35 @@ import java.nio.charset.StandardCharsets
 
 object JsonOutput {
 
-  /** Returns the next available `dir/N.json` path, thread-safe within this JVM. */
-  def nextOutputFile(dir: Path): Path = nextFileLock.synchronized {
+  /** Returns the next available `dir/<prefix>N.json` path, thread-safe within this JVM. */
+  def nextOutputFile(dir: Path, prefix: String = ""): Path = nextFileLock.synchronized {
     Files.createDirectories(dir)
     import scala.collection.JavaConverters._
     val stream = Files.list(dir)
-    val max = try
-      stream.iterator().asScala
-        .map(_.getFileName.toString)
-        .filter(_.endsWith(".json"))
-        .flatMap(n => scala.util.Try(n.dropRight(5).toLong).toOption)
-        .reduceOption(_ max _)
-        .getOrElse(0L)
-    finally stream.close()
-    dir.resolve(s"${max + 1}.json")
+    val suffix = ".json"
+    val max    =
+      try
+        stream
+          .iterator()
+          .asScala
+          .map(_.getFileName.toString)
+          .filter(n => n.startsWith(prefix) && n.endsWith(suffix))
+          .flatMap(n => scala.util.Try(n.drop(prefix.length).dropRight(suffix.length).toLong).toOption)
+          .reduceOption(_ max _)
+          .getOrElse(0L)
+      finally stream.close()
+    dir.resolve(s"$prefix${max + 1}.json")
   }
 
   private val nextFileLock = new Object
 
   def writePathResult(
-      result:       QueryEngine.PathResult,
-      from:         String,
-      to:           String,
+      result: QueryEngine.PathResult,
+      from: String,
+      to: String,
       compileError: Boolean,
-      graph:        LoadedGraph,
-      outFile:      Path,
+      graph: LoadedGraph,
+      outFile: Path,
   ): Path = {
     val fields = Seq(
       "query"     -> obj("from" -> str(from), "to" -> str(to)),
@@ -41,19 +45,21 @@ object JsonOutput {
   }
 
   def writeViaResult(
-      result:       Option[QueryEngine.ViaResult],
-      vertex:       String,
-      depthIn:      Int,
-      depthOut:     Int,
+      result: Option[QueryEngine.ViaResult],
+      vertex: String,
+      depthIn: Int,
+      depthOut: Int,
       compileError: Boolean,
-      graph:        LoadedGraph,
-      outFile:      Path,
+      graph: LoadedGraph,
+      outFile: Path,
   ): Path = {
     val (vertexJson, inArr, outArr) = result match {
       case Some(r) =>
-        (nodeJson(vertex, graph),
-         arr(r.in.map(n  => depthNodeJson(n, graph))),
-         arr(r.out.map(n => depthNodeJson(n, graph))))
+        (
+          nodeJson(vertex, graph),
+          arr(r.in.map(n => depthNodeJson(n, graph))),
+          arr(r.out.map(n => depthNodeJson(n, graph)))
+        )
       case None =>
         ("null", "[]", "[]")
     }

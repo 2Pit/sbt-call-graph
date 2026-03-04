@@ -8,28 +8,35 @@ import scala.collection.JavaConverters._
 object GraphLoader {
 
   /**
-   * Load a call graph from all .semanticdb files found under `semanticdbRoot`.
+   * Load a call graph by merging all .semanticdb files found under each root in `semanticdbRoots`.
    *
    * @param sourceRoot
-   *   root directory from which `doc.uri` paths are resolved. When None, falls back to inferring it from
-   *   `semanticdbRoot` (assumes layout `<module>/target/scala-X.YY/meta`).
+   *   root directory from which `doc.uri` paths are resolved (typically the build root). When None, falls back to
+   *   inferring it from the first root (assumes layout `<module>/target/scala-X.YY/meta`).
    */
-  def load(semanticdbRoot: Path, sourceRoot: Option[Path] = None): LoadedGraph = {
-    val stream = Files.walk(semanticdbRoot)
-    val files  =
-      try stream.iterator().asScala.filter(_.toString.endsWith(".semanticdb")).toList
-      finally stream.close()
+  def load(semanticdbRoots: Seq[Path], sourceRoot: Option[Path] = None): LoadedGraph = {
+    val files = semanticdbRoots.flatMap { root =>
+      if (!Files.exists(root)) Nil
+      else {
+        val stream = Files.walk(root)
+        try stream.iterator().asScala.filter(_.toString.endsWith(".semanticdb")).toList
+        finally stream.close()
+      }
+    }.distinct
 
     if (files.isEmpty) {
-      System.err.println(s"[graph-explorer] WARNING: no .semanticdb files found under $semanticdbRoot")
+      System.err.println(
+        s"[graph-explorer] WARNING: no .semanticdb files found under: ${semanticdbRoots.mkString(", ")}"
+      )
       System.err.println(s"[graph-explorer] Run 'compile' first.")
       return LoadedGraph.empty
     }
 
-    // Resolve source root: prefer explicit arg, fall back to <module>/target/scala-X.YY/meta → ../../../../
+    // Prefer explicit sourceRoot; fall back to inferring from the first root's path layout.
     val projectRoot: Option[Path] = sourceRoot.orElse {
-      val candidate = semanticdbRoot.getParent.getParent.getParent.getParent
-      Some(candidate).filter(Files.isDirectory(_))
+      semanticdbRoots.headOption
+        .map(_.getParent.getParent.getParent.getParent)
+        .filter(Files.isDirectory(_))
     }
 
     val outB  = collection.mutable.Map.empty[String, collection.mutable.Set[String]]

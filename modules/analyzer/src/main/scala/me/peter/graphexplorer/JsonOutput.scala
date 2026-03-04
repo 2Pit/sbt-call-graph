@@ -5,17 +5,36 @@ import java.nio.charset.StandardCharsets
 
 object JsonOutput {
 
+  /** Returns the next available `dir/N.json` path, thread-safe. */
+  def nextOutputFile(dir: Path): Path = nextFileLock.synchronized {
+    Files.createDirectories(dir)
+    import scala.collection.JavaConverters._
+    val max = Files
+      .list(dir)
+      .iterator()
+      .asScala
+      .map(_.getFileName.toString)
+      .filter(_.endsWith(".json"))
+      .flatMap(n => scala.util.Try(n.dropRight(5).toLong).toOption)
+      .reduceOption(_ max _)
+      .getOrElse(0L)
+    dir.resolve(s"${max + 1}.json")
+  }
+
+  private val nextFileLock = new Object
+
   def writePathResult(
       result: QueryEngine.PathResult,
       from: String,
       to: String,
+      compileError: Boolean,
       graph: LoadedGraph,
       outFile: Path,
   ): Path = {
-    val json = if (result.paths.isEmpty) {
-      obj("found" -> "false", "from" -> str(from), "to" -> str(to))
+    val base = if (result.paths.isEmpty) {
+      Seq("found" -> "false", "from" -> str(from), "to" -> str(to))
     } else {
-      obj(
+      Seq(
         "found"     -> "true",
         "truncated" -> result.truncated.toString,
         "from"      -> str(from),
@@ -23,32 +42,45 @@ object JsonOutput {
         "paths"     -> arr(result.paths.map(path => arr(path.map(nodeJson(_, graph))))),
       )
     }
-    write(outFile, json)
+    val fields = if (compileError) base :+ ("compileError" -> "true") else base
+    write(outFile, obj(fields: _*))
   }
 
   def writeViaResult(
-      result: QueryEngine.ViaResult,
+      result: Option[QueryEngine.ViaResult],
       vertex: String,
-      depth: Int,
+      depthIn: Int,
+      depthOut: Int,
+      compileError: Boolean,
       graph: LoadedGraph,
       outFile: Path,
   ): Path = {
-    val json = obj(
-      "query"  -> obj("vertex" -> str(vertex), "depth" -> depth.toString),
-      "vertex" -> nodeJson(vertex, graph),
-      "in"     -> arr(result.in.map(n => depthNodeJson(n, graph))),
-      "out"    -> arr(result.out.map(n => depthNodeJson(n, graph))),
-    )
-    write(outFile, json)
+    val (vertexJson, inArr, outArr) = result match {
+      case Some(r) =>
+        (
+          nodeJson(vertex, graph),
+          arr(r.in.map(n => depthNodeJson(n, graph))),
+          arr(r.out.map(n => depthNodeJson(n, graph)))
+        )
+      case None =>
+        ("null", "[]", "[]")
+    }
+    val fields = Seq(
+      "query"  -> obj("vertex" -> str(vertex), "depthIn" -> depthIn.toString, "depthOut" -> depthOut.toString),
+      "vertex" -> vertexJson,
+      "in"     -> inArr,
+      "out"    -> outArr,
+    ) ++ (if (compileError) Seq("compileError" -> "true") else Nil)
+    write(outFile, obj(fields: _*))
   }
 
-  def writeIndex(graph: LoadedGraph, status: String, outFile: Path): Path = {
-    val json = obj(
+  def writeIndex(graph: LoadedGraph, status: String, compileError: Boolean, outFile: Path): Path = {
+    val fields = Seq(
       "status" -> str(status),
       "nodes"  -> graph.nodeCount.toString,
       "edges"  -> graph.edgeCount.toString,
-    )
-    write(outFile, json)
+    ) ++ (if (compileError) Seq("compileError" -> "true") else Nil)
+    write(outFile, obj(fields: _*))
   }
 
   // startLine/endLine stored 0-based in SemanticDB; +1 for human-readable output

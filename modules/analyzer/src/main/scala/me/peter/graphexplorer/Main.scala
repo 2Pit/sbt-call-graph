@@ -2,7 +2,7 @@ package me.peter.graphexplorer
 
 import java.nio.file.Paths
 
-/**
+/*
  * CLI entry point.
  *
  * Usage:
@@ -23,9 +23,6 @@ object Main extends App {
 
   val semanticdbDir = Paths.get(args(0))
   val rest          = args.drop(1).toList
-
-  val maxDepth = flagInt(rest, "--maxDepth", default = 20)
-  val maxPaths = flagInt(rest, "--maxPaths", default = 100)
 
   val graph = CallGraphState.getOrLoad(semanticdbDir)
 
@@ -49,21 +46,23 @@ object Main extends App {
       }
 
     case "path" :: from :: to :: _ =>
-      val result = QueryEngine.pathAtoB(graph, from, to, maxDepth, maxPaths)
-      val outFile = semanticdbDir.getParent.resolve("graph-last-result.json")
-      val written = JsonOutput.writePathResult(result, from, to, graph, outFile)
+      val maxDepth = flagInt(rest, "--maxDepth", 20)
+      val maxPaths = flagInt(rest, "--maxPaths", 100)
+      val result   = QueryEngine.pathAtoB(graph, from, to, maxDepth, maxPaths)
+      val outDir   = semanticdbDir.getParent.resolve("call-graph")
+      val outFile  = JsonOutput.nextOutputFile(outDir)
+      val written  = JsonOutput.writePathResult(result, from, to, compileError = false, graph, outFile)
       println(written.toAbsolutePath.toString)
 
     case "via" :: vertex :: _ =>
-      QueryEngine.viaVertex(graph, vertex) match {
-        case None =>
-          System.err.println(s"[graph-explorer] vertex not found: $vertex")
-          sys.exit(1)
-        case Some(result) =>
-          val outFile = semanticdbDir.getParent.resolve("graph-last-result.json")
-          val written = JsonOutput.writeViaResult(result, vertex, maxDepth, graph, outFile)
-          println(written.toAbsolutePath.toString)
-      }
+      val depth    = flagInt(rest, "--depth", 2)
+      val depthIn  = flagInt(rest, "--depthIn", depth)
+      val depthOut = flagInt(rest, "--depthOut", depth)
+      val result   = QueryEngine.viaVertex(graph, vertex, depthIn, depthOut)
+      val outDir   = semanticdbDir.getParent.resolve("call-graph")
+      val outFile  = JsonOutput.nextOutputFile(outDir)
+      val written  = JsonOutput.writeViaResult(result, vertex, depthIn, depthOut, compileError = false, graph, outFile)
+      println(written.toAbsolutePath.toString)
 
     case other =>
       System.err.println(s"[graph-explorer] unknown command: ${other.mkString(" ")}")

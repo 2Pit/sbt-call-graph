@@ -42,7 +42,7 @@ Full example: `sreo/session/SessionLive#close().`
 2. Compose the FQN from the rules above
 3. If "vertex not found" — run `graphIndex`, then search the result file:
 ```sh
-grep '"displayName".*close' blank-slate-server/srs-study-ws/target/graph-last-result.json
+grep '"displayName".*close' blank-slate-server/srs-study-ws/target/call-graph/$(ls -t blank-slate-server/srs-study-ws/target/call-graph/ | head -1)
 ```
 The `id` field of the matching entry is the correct FQN.
 
@@ -80,13 +80,13 @@ cd blank-slate-server && sbtn "studyWs/graphVia sreo/session/SessionLive#close()
 
 ## Reading the result
 
-Result file: `blank-slate-server/srs-study-ws/target/graph-last-result.json`
+Result file: `blank-slate-server/srs-study-ws/target/call-graph/N.json` (N increments each call, never overwritten)
 
 ### graphVia response
 
 ```json
 {
-  "query":  { "vertex": "sreo/session/SessionLive#close().", "depth": 2 },
+  "query":  { "vertex": "sreo/session/SessionLive#close().", "depthIn": 2, "depthOut": 2 },
   "vertex": { "id": "...", "displayName": "close", "file": "srs-study-ws/.../SessionsLive.scala", "startLine": 105, "endLine": 110 },
   "in":  [ { "id": "...", "displayName": "closeOnResult", "file": "...", "startLine": 113, "endLine": 120, "depth": 1 }, ... ],
   "out": [ { "id": "...", "displayName": "closeSession",  "file": "...", "startLine": 92,  "endLine": 98,  "depth": 1 }, ... ]

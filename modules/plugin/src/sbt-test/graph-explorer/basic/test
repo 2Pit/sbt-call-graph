@@ -1,0 +1,14 @@
+# Compile the project to generate semanticdb artifacts
+> compile
+
+# graphIndex: should write diagnostics file
+> graphIndex
+$ exists target/graph-last-result.json
+
+# graphVia: callers/callees of Helper.compute
+> graphVia me/example/Helper.compute().
+$ exists target/graph-last-result.json
+
+# graphPath: path from Caller.doSomething to Helper.compute
+> graphPath me/example/Caller.doSomething(). me/example/Helper.compute().
+$ exists target/graph-last-result.json

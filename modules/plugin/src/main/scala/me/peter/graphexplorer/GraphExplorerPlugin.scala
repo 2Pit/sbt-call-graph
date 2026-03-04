@@ -30,7 +30,7 @@ object GraphExplorerPlugin extends AutoPlugin {
       val semanticdbDir = (Compile / classDirectory).value.getParentFile / "meta"
       val outDir        = target.value / "call-graph"
       val outFile       = JsonOutput.nextOutputFile(outDir.toPath)
-      val graph         = CallGraphState.getOrLoad(semanticdbDir.toPath)
+      val graph         = CallGraphState.getOrLoad(semanticdbDir.toPath, Some((ThisBuild / baseDirectory).value.toPath))
       val result        = QueryEngine.pathAtoB(graph, from, to, maxDepth, maxPaths)
       val written       = JsonOutput.writePathResult(result, from, to, compileError, graph, outFile)
       println(written.toAbsolutePath.toString)
@@ -47,7 +47,7 @@ object GraphExplorerPlugin extends AutoPlugin {
       val semanticdbDir = (Compile / classDirectory).value.getParentFile / "meta"
       val outDir        = target.value / "call-graph"
       val outFile       = JsonOutput.nextOutputFile(outDir.toPath)
-      val graph         = CallGraphState.getOrLoad(semanticdbDir.toPath)
+      val graph         = CallGraphState.getOrLoad(semanticdbDir.toPath, Some((ThisBuild / baseDirectory).value.toPath))
       val result        = QueryEngine.viaVertex(graph, vertex, depthIn, depthOut)
       val written       = JsonOutput.writeViaResult(result, vertex, depthIn, depthOut, compileError, graph, outFile)
       println(written.toAbsolutePath.toString)
@@ -58,7 +58,7 @@ object GraphExplorerPlugin extends AutoPlugin {
       val semanticdbDir = (Compile / classDirectory).value.getParentFile / "meta"
       val outDir        = target.value / "call-graph"
       val outFile       = JsonOutput.nextOutputFile(outDir.toPath)
-      val graph         = CallGraphState.getOrLoad(semanticdbDir.toPath)
+      val graph         = CallGraphState.getOrLoad(semanticdbDir.toPath, Some((ThisBuild / baseDirectory).value.toPath))
       val status        = s"loaded at ${new java.util.Date()}"
       val written       = JsonOutput.writeIndex(graph, status, compileError, outFile)
       println(written.toAbsolutePath.toString)

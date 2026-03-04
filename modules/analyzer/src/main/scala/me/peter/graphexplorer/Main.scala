@@ -10,10 +10,10 @@ import java.nio.file.Paths
  *     -- print stats (node/edge counts, top callers)
  *
  *   run <semanticdb-dir> path <from> <to> [--maxDepth N] [--maxPaths N]
- *     -- find paths from <from> to <to>, write JSON to stdout
+ *     -- find paths from <from> to <to>, write JSON to call-graph/N.json
  *
- *   run <semanticdb-dir> via <vertex> [--maxDepth N] [--maxPaths N]
- *     -- show callers/callees of <vertex>, write JSON to stdout
+ *   run <semanticdb-dir> via <vertex> [--depth N] [--depthIn N] [--depthOut N]
+ *     -- show callers/callees of <vertex>, write JSON to call-graph/N.json
  */
 object Main extends App {
   if (args.isEmpty) {

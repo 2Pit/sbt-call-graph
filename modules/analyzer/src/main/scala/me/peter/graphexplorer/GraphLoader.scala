@@ -7,14 +7,18 @@ import scala.collection.JavaConverters._
 
 object GraphLoader {
 
-  /** Load a call graph from all .semanticdb files found under `semanticdbRoot`. */
-  def load(semanticdbRoot: Path): LoadedGraph = {
-    val files = Files
-      .walk(semanticdbRoot)
-      .iterator()
-      .asScala
-      .filter(_.toString.endsWith(".semanticdb"))
-      .toList
+  /**
+   * Load a call graph from all .semanticdb files found under `semanticdbRoot`.
+   *
+   * @param sourceRoot
+   *   root directory from which `doc.uri` paths are resolved. When None, falls back to inferring it from
+   *   `semanticdbRoot` (assumes layout `<module>/target/scala-X.YY/meta`).
+   */
+  def load(semanticdbRoot: Path, sourceRoot: Option[Path] = None): LoadedGraph = {
+    val stream = Files.walk(semanticdbRoot)
+    val files  =
+      try stream.iterator().asScala.filter(_.toString.endsWith(".semanticdb")).toList
+      finally stream.close()
 
     if (files.isEmpty) {
       System.err.println(s"[graph-explorer] WARNING: no .semanticdb files found under $semanticdbRoot")
@@ -22,8 +26,8 @@ object GraphLoader {
       return LoadedGraph.empty
     }
 
-    // Derive project root: semanticdbRoot = <module>/target/scala-X.YY/meta
-    val projectRoot: Option[Path] = {
+    // Resolve source root: prefer explicit arg, fall back to <module>/target/scala-X.YY/meta → ../../../../
+    val projectRoot: Option[Path] = sourceRoot.orElse {
       val candidate = semanticdbRoot.getParent.getParent.getParent.getParent
       Some(candidate).filter(Files.isDirectory(_))
     }
@@ -46,8 +50,8 @@ object GraphLoader {
       )
 
     LoadedGraph(
-      out  = outB.map { case (k, v) => k -> v.toSet }.toMap,
-      in   = inB.map { case (k, v) => k -> v.toSet }.toMap,
+      out = outB.map { case (k, v) => k -> v.toSet }.toMap,
+      in = inB.map { case (k, v) => k -> v.toSet }.toMap,
       meta = metaB.toMap,
     )
   }
@@ -69,14 +73,13 @@ object GraphLoader {
       val displayNameOf: Map[String, String] =
         doc.symbols.map(s => s.symbol -> s.displayName).toMap
 
-      // Parse source file to get method end lines: startLine -> endLine (0-based)
       val endLineOf: Map[Int, Int] = projectRoot.flatMap { root =>
         val sourceFile = root.resolve(doc.uri)
-        if (Files.exists(sourceFile)) Some(parseEndLines(sourceFile))
-        else None
+        if (Files.exists(sourceFile)) Some(parseEndLines(sourceFile)) else None
       }.getOrElse(Map.empty)
 
-      val methodDefs: Vector[(String, Int)] =
+      // Array for O(1) random access during binary search; sorted by startLine
+      val methodDefs: Array[(String, Int)] =
         doc.occurrences.filter { occ =>
           occ.role == SymbolOccurrence.Role.DEFINITION &&
           occ.range.isDefined &&
@@ -84,7 +87,7 @@ object GraphLoader {
           kindOf.get(occ.symbol).contains(SymbolInformation.Kind.METHOD)
         }
           .map(occ => occ.symbol -> occ.range.get.startLine)
-          .toVector
+          .toArray
           .sortBy(_._2)
 
       methodDefs.foreach { case (sym, line) =>
@@ -100,8 +103,16 @@ object GraphLoader {
 
       if (methodDefs.isEmpty) return
 
-      def callerAt(line: Int): Option[String] =
-        methodDefs.takeWhile(_._2 <= line).lastOption.map(_._1)
+      // Binary search: find rightmost method with startLine <= line
+      def callerAt(line: Int): Option[String] = {
+        var lo = 0; var hi = methodDefs.length - 1; var found = -1
+        while (lo <= hi) {
+          val mid = (lo + hi) >>> 1
+          if (methodDefs(mid)._2 <= line) { found = mid; lo = mid + 1 }
+          else hi = mid - 1
+        }
+        if (found >= 0) Some(methodDefs(found)._1) else None
+      }
 
       doc.occurrences.filter { occ =>
         occ.role == SymbolOccurrence.Role.REFERENCE &&
@@ -120,21 +131,29 @@ object GraphLoader {
     }
   }
 
-  /** Parse a Scala source file and return a map of methodStartLine -> methodEndLine (0-based). */
+  /**
+   * Parse a Scala source file; return methodStartLine -> methodEndLine (0-based). Tries Scala 2.13 dialect first, then
+   * Scala 3 as fallback.
+   */
   private def parseEndLines(sourceFile: Path): Map[Int, Int] = {
-    implicit val dialect: Dialect = dialects.Scala213
-    val input                     = Input.File(sourceFile.toFile)
-    val parsed                    = input.parse[Source]
-    parsed.toOption match {
-      case None       => Map.empty
-      case Some(tree) =>
+    val input                                = Input.File(sourceFile.toFile)
+    def tryParse(d: Dialect): Option[Source] = {
+      implicit val dialect: Dialect = d
+      input.parse[Source].toOption
+    }
+    tryParse(dialects.Scala213)
+      .orElse(tryParse(dialects.Scala3))
+      .map { tree =>
         tree.collect {
           case d: Defn.Def   => d.name.pos.startLine -> d.pos.endLine
           case d: Defn.Macro => d.name.pos.startLine -> d.pos.endLine
         }.toMap
-    }
+      }
+      .getOrElse(Map.empty)
   }
 
+  // SemanticDB local symbols are "local" followed by decimal digits: local0, local1, ...
   private def isSynthetic(symbol: String): Boolean =
-    symbol.startsWith("local") || symbol.isEmpty
+    symbol.isEmpty ||
+      (symbol.length > 5 && symbol.startsWith("local") && symbol.drop(5).forall(Character.isDigit))
 }

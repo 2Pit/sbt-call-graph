@@ -104,7 +104,7 @@ Read("blank-slate-server/" + node.file, offset = node.startLine - 1, limit = nod
 
 ### graphPath response
 
-Paths are returned shortest-first. Each path is an ordered list of nodes — read them in sequence to follow the call chain.
+Each path is an ordered list of nodes — read them in sequence to follow the call chain. Paths are not guaranteed to be in any particular order; set `--maxPaths` to limit output volume.
 
 ---
 

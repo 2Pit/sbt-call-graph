@@ -9,7 +9,6 @@ lazy val analyzer = project
     name := "graph-explorer-analyzer",
     libraryDependencies ++= Seq(
       "org.scalameta" %% "scalameta" % "4.8.14",
-      "com.lihaoyi"   %% "upickle"   % "3.3.1",
     ),
   )
 

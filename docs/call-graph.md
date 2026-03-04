@@ -71,6 +71,11 @@ studyWs/graphPath A B --maxDepth 15 --maxPaths 50
 
 Each command triggers incremental compilation automatically before querying.
 
+**Important:** pipe through `tail -5` to suppress sbt log noise — only the result file path matters:
+```sh
+cd blank-slate-server && sbtn "studyWs/graphVia sreo/session/SessionLive#close()." 2>&1 | tail -5
+```
+
 ---
 
 ## Reading the result

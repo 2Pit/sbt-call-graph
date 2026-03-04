@@ -10,6 +10,7 @@ lazy val analyzer = project
     scalaVersion := "2.13.18",
     libraryDependencies ++= Seq(
       "org.scalameta" %% "scalameta" % "4.8.14",
+      "com.lihaoyi"   %% "upickle"   % "3.3.1",
     ),
   )
 

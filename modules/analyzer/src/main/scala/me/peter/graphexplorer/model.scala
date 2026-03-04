@@ -3,7 +3,8 @@ package me.peter.graphexplorer
 /** Metadata for a single graph vertex (method). */
 final case class NodeMeta(
   file: String,
-  startLine: Int, // 0-based, as stored in SemanticDB
+  startLine: Int,  // 0-based, as stored in SemanticDB
+  endLine: Int,    // 0-based; equals startLine for fields/vals (no block body)
   displayName: String,
 )
 

@@ -34,7 +34,7 @@ object CallGraphState {
       .asScala
       .filter(p => Files.isRegularFile(p) && p.toString.endsWith(".semanticdb"))
       .map(Files.getLastModifiedTime(_).toMillis)
-      .maxOption
+      .reduceOption(_ max _)
       .getOrElse(0L)
   }
 

@@ -3,7 +3,7 @@ package me.peter.graphexplorer
 import scala.meta._
 import scala.meta.internal.semanticdb._
 import java.nio.file.{Files, Path}
-import scala.jdk.CollectionConverters._
+import scala.collection.JavaConverters._
 
 object GraphLoader {
 
@@ -46,8 +46,8 @@ object GraphLoader {
       )
 
     LoadedGraph(
-      out = outB.view.mapValues(_.toSet).toMap,
-      in = inB.view.mapValues(_.toSet).toMap,
+      out  = outB.map { case (k, v) => k -> v.toSet }.toMap,
+      in   = inB.map { case (k, v) => k -> v.toSet }.toMap,
       meta = metaB.toMap,
     )
   }

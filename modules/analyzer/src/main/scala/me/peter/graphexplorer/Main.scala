@@ -73,7 +73,7 @@ object Main extends App {
   private def flagInt(args: List[String], flag: String, default: Int): Int = {
     val idx = args.indexOf(flag)
     if (idx >= 0 && idx + 1 < args.size)
-      args(idx + 1).toIntOption.getOrElse(default)
+      scala.util.Try(args(idx + 1).toInt).getOrElse(default)
     else default
   }
 }

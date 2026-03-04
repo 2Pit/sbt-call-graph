@@ -2,26 +2,26 @@ ThisBuild / organization := "me.peter"
 ThisBuild / version      := "0.1.0-SNAPSHOT"
 ThisBuild / scalaVersion := "2.12.20"
 
-// analyzer overrides to 2.13 — scalameta 4.x не публикуется для 2.12
+// scalameta 4.x публикуется и для 2.12, и для 2.13
 lazy val analyzer = project
   .in(file("modules/analyzer"))
   .settings(
-    name         := "graph-explorer-analyzer",
-    scalaVersion := "2.13.18",
+    name := "graph-explorer-analyzer",
     libraryDependencies ++= Seq(
       "org.scalameta" %% "scalameta" % "4.8.14",
       "com.lihaoyi"   %% "upickle"   % "3.3.1",
     ),
   )
 
-// plugin: sbtPlugin := true форсирует Scala 2.12 (берёт из ThisBuild)
-// dependsOn(analyzer) невозможен из-за несовместимости версий Scala;
-// взаимодействие через внешний процесс или файл — решим позже
 lazy val plugin = project
   .in(file("modules/plugin"))
+  .dependsOn(analyzer)
+  .enablePlugins(ScriptedPlugin)
   .settings(
-    name      := "sbt-graph-explorer",
-    sbtPlugin := true,
+    name             := "sbt-graph-explorer",
+    sbtPlugin        := true,
+    scriptedLaunchOpts ++= Seq("-Xmx1g", s"-Dplugin.version=${version.value}"),
+    scriptedBufferLog := false,
   )
 
 lazy val root = project

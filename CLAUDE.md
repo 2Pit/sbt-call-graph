@@ -57,8 +57,11 @@ sbtn "analyzer/run /Users/b_petr/IdeaProjects/blank-slate/blank-slate-server/srs
 # тесты analyzer:
 sbtn "analyzer/test"
 
-# публикация плагина локально:
-sbtn publishLocal
+# публикация обоих модулей локально:
+sbtn "analyzer/publishLocal; plugin/publishLocal"
+
+# scripted тесты плагина (публикует analyzer сначала, затем запускает):
+sbtn "analyzer/publishLocal; plugin/scripted"
 ```
 
 **FQN-формат** (SemanticDB): `sreo/session/SessionLive#close().` — пакет через `/`, класс через `#`, метод с `().` на конце.
@@ -88,8 +91,8 @@ sbtn publishLocal
 | 3 | CallGraphState | ✅ done |
 | 4 | JsonOutput | ✅ done |
 | 5 | Main CLI | ✅ done |
-| 6 | SBT Plugin (GraphExplorerPlugin) | ⬜ pending |
-| 7 | Scripted test | ⬜ pending |
+| 6 | SBT Plugin (GraphExplorerPlugin) | ✅ done |
+| 7 | Scripted test | ✅ done |
 | 8 | Подключение к blank-slate-server | ⬜ pending |
 
 ---

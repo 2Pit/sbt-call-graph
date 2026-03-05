@@ -24,6 +24,14 @@ The plugin loads SemanticDB from **all modules** (`srs-study-ws`, `srs-common`, 
 **Module structure is unknown**
 → Run `graphIndex` for scale (node/edge counts), then `graphVia` on the entry point.
 
+**FQN is unknown / `vertex: null` was returned**
+→ Run `graphSearch` with a class or method name substring to find the correct FQN.
+> `graphSearch ScheduleRepositoryLive` returns all matching vertices with their IDs.
+
+**Analysing cross-module coupling**
+→ Run `graphModule` with a path prefix to see all call edges that cross the module boundary.
+> `graphModule db/db-learning` shows what db-learning calls outside itself and who calls into it.
+
 ---
 
 ## How to find the FQN
@@ -40,13 +48,9 @@ SemanticDB symbol format: `package/ClassOrObject#method().`
 Full example: `sreo/session/SessionLive#close().`
 
 **If the exact FQN is unknown:**
-1. `Grep` the source for the class/object name to confirm the package
-2. Compose the FQN from the rules above
-3. If `"vertex": null` in the result — run `graphIndex`, then search the result file:
-```sh
-grep '"displayName".*close' blank-slate-server/srs-study-ws/target/call-graph/$(ls -t blank-slate-server/srs-study-ws/target/call-graph/ | head -1)
-```
-The `id` field of the matching entry is the correct FQN.
+1. Run `graphSearch <name>` — returns all vertices whose FQN or displayName contains the substring.
+2. Pick the `id` from the matching entry and use it in `graphVia` / `graphPath`.
+3. If `graphSearch` returns nothing — `Grep` the source for the class name to confirm the package, then compose the FQN from the table above.
 
 ---
 
@@ -57,6 +61,10 @@ All commands are run inside the `blank-slate-server` sbt shell:
 ```
 # check graph is loaded (node/edge counts)
 studyWs/graphIndex
+
+# search for a vertex by class/method name (use when FQN is unknown)
+studyWs/graphSearch ScheduleRepositoryLive
+studyWs/graphSearch ScheduleRepositoryLive --maxResults 20
 
 # neighbourhood of a method (default --depth 2 in both directions)
 studyWs/graphVia sreo/session/SessionLive#close().
@@ -72,6 +80,10 @@ studyWs/graphPath sreo/session/SessionLive#closeOnResult(). sreo/session/Session
 
 # path with custom limits
 studyWs/graphPath A B --maxDepth 15 --maxPaths 50
+
+# cross-module coupling: all call edges crossing a module boundary
+studyWs/graphModule db/db-learning
+studyWs/graphModule db/db-reporting
 ```
 
 Each command triggers incremental compilation automatically before querying.
@@ -124,6 +136,43 @@ Result file: `blank-slate-server/srs-study-ws/target/call-graph/N.json` (N incre
 Read("blank-slate-server/" + node.file, offset = node.startLine - 1, limit = node.endLine - node.startLine + 1)
 ```
 
+### graphSearch response
+
+```json
+{
+  "query":   "ScheduleRepositoryLive",
+  "count":   2,
+  "matches": [
+    { "id": "sreo/db/repository/ScheduleRepositoryLive#.", "displayName": "ScheduleRepositoryLive", "file": "db/db-learning/.../ScheduleRepositoryLive.scala", "startLine": 12, "endLine": 12 },
+    { "id": "sreo/db/repository/ScheduleRepositoryLayer#.", "displayName": "ScheduleRepositoryLayer", "file": "...", "startLine": 5, "endLine": 5 }
+  ]
+}
+```
+
+Use the `id` from a match as the vertex argument in `graphVia` or `graphPath`.
+
+### graphModule response
+
+```json
+{
+  "query": { "prefix": "db/db-learning" },
+  "outgoing": [
+    { "from": { "id": "sreo/db/repository/ScheduleRepositoryLive#scheduleForUser().", ... },
+      "to":   { "id": "sreo/db/query/PartnerQ.getByUser().", ... } },
+    ...
+  ],
+  "incoming": [
+    { "from": { "id": "sreo/session/SessionLive#open().", ... },
+      "to":   { "id": "sreo/db/repository/ScheduleRepositoryLive#find().", ... } },
+    ...
+  ]
+}
+```
+
+- `outgoing` — calls leaving the module (what this module depends on externally)
+- `incoming` — calls entering the module (what calls into this module from outside)
+- Only edges where both endpoints are known in the graph are included (stdlib/library calls excluded)
+
 ### graphPath response
 
 ```json
@@ -143,7 +192,7 @@ Each path is an ordered list of nodes — read them in sequence to follow the ca
 
 ## Limitations
 
-- **Exact FQN only** — no partial/fuzzy search; use `graphIndex` + grep to discover FQNs
+- **`graphSearch` is case-sensitive** — use the exact casing of the class/method name
 - **Method-level only** — inheritance and type relationships are not in the graph
 - **`val` fields** appear as nodes with `endLine == startLine`
 - **Implicit conversions and for-comprehension** may be partially missing

@@ -62,6 +62,19 @@ object Main extends App {
       val written  = JsonOutput.writeViaResult(result, vertex, depthIn, depthOut, compileError = false, graph, outFile)
       println(written.toAbsolutePath.toString)
 
+    case "search" :: query :: _ =>
+      val maxResults = flagInt(rest, "--maxResults", 50)
+      val matches    = QueryEngine.search(graph, query, maxResults)
+      val outFile    = JsonOutput.nextOutputFile(semanticdbDir.getParent.resolve("call-graph"))
+      val written    = JsonOutput.writeSearchResult(matches, query, graph, outFile)
+      println(written.toAbsolutePath.toString)
+
+    case "module" :: prefix :: _ =>
+      val result  = QueryEngine.moduleEdges(graph, prefix)
+      val outFile = JsonOutput.nextOutputFile(semanticdbDir.getParent.resolve("call-graph"))
+      val written = JsonOutput.writeModuleResult(result, prefix, graph, outFile)
+      println(written.toAbsolutePath.toString)
+
     case other =>
       System.err.println(s"[graph-explorer] unknown command: ${other.mkString(" ")}")
       sys.exit(1)

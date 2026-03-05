@@ -80,6 +80,50 @@ object QueryEngine {
       out = bfsWithDepth(v, depthOut, graph.out, graph.meta),
     ))
 
+  /**
+   * Search vertices whose FQN or displayName contains `query` (case-sensitive).
+   * Returns up to `maxResults` matching IDs, sorted by (file, startLine).
+   */
+  def search(graph: LoadedGraph, query: String, maxResults: Int = 50): Seq[String] =
+    graph.meta
+      .collect { case (id, m) if m.displayName.contains(query) || id.contains(query) => id }
+      .toSeq
+      .sortBy(id => graph.meta.get(id).map(m => (m.file, m.startLine)).getOrElse(("", 0)))
+      .take(maxResults)
+
+  final case class ModuleEdge(srcId: String, tgtId: String)
+  final case class ModuleResult(outgoing: Seq[ModuleEdge], incoming: Seq[ModuleEdge])
+
+  /**
+   * Return all call-graph edges that cross the boundary of a module identified by `pathPrefix`.
+   * A vertex belongs to the module if its file path contains `pathPrefix`.
+   * Only edges where BOTH endpoints are known in meta are included (library calls are excluded).
+   *
+   * @param outgoing  edges leaving the module  (src inside → tgt outside)
+   * @param incoming  edges entering the module (src outside → tgt inside)
+   */
+  def moduleEdges(graph: LoadedGraph, pathPrefix: String): ModuleResult = {
+    val inside = graph.meta.collect { case (id, m) if m.file.contains(pathPrefix) => id }.toSet
+
+    val outgoing = (for {
+      src <- inside.toSeq
+      tgt <- graph.out.getOrElse(src, Set.empty).toSeq
+      if !inside(tgt) && graph.meta.contains(tgt)
+    } yield ModuleEdge(src, tgt))
+      .sortBy(e => graph.meta.get(e.srcId).map(m => (m.file, m.startLine)).getOrElse(("", 0)))
+      .distinct
+
+    val incoming = (for {
+      tgt <- inside.toSeq
+      src <- graph.in.getOrElse(tgt, Set.empty).toSeq
+      if !inside(src) && graph.meta.contains(src)
+    } yield ModuleEdge(src, tgt))
+      .sortBy(e => graph.meta.get(e.tgtId).map(m => (m.file, m.startLine)).getOrElse(("", 0)))
+      .distinct
+
+    ModuleResult(outgoing, incoming)
+  }
+
   private def bfsWithDepth(
       start: String,
       depth: Int,

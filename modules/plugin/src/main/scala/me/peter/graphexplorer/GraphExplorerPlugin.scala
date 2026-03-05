@@ -13,6 +13,12 @@ object GraphExplorerPlugin extends AutoPlugin {
     val graphVia  = inputKey[Unit](
       "Show callers/callees of a vertex. Usage: graphVia <vertex> [--depth N] [--depthIn N] [--depthOut N]"
     )
+    val graphSearch = inputKey[Unit](
+      "Search vertices by name/FQN substring. Usage: graphSearch <substring> [--maxResults N]"
+    )
+    val graphModule = inputKey[Unit](
+      "Show cross-module call edges. Usage: graphModule <path-prefix>"
+    )
     val graphIndex           = taskKey[Unit]("Write call graph diagnostics to target/call-graph/N.json")
     val graphSemanticdbRoots =
       taskKey[Seq[Path]]("All SemanticDB meta dirs to load: current module + internal dependencies")
@@ -60,6 +66,31 @@ object GraphExplorerPlugin extends AutoPlugin {
       val graph        = CallGraphState.getOrLoad(roots, sourceRoot)
       val result       = QueryEngine.viaVertex(graph, vertex, depthIn, depthOut)
       val written      = JsonOutput.writeViaResult(result, vertex, depthIn, depthOut, compileError, graph, outFile)
+      streams.value.log.info(written.toAbsolutePath.toString)
+    },
+    graphSearch := {
+      val args = spaceDelimited("<args>").parsed
+      if (args.isEmpty) sys.error("Usage: graphSearch <substring> [--maxResults N]")
+      val query      = args(0)
+      val maxResults = flagInt(args, "--maxResults", 200)
+      val roots      = graphSemanticdbRoots.value
+      val sourceRoot = Some((ThisBuild / baseDirectory).value.toPath)
+      val outFile    = JsonOutput.nextOutputFile((target.value / "call-graph").toPath)
+      val graph      = CallGraphState.getOrLoad(roots, sourceRoot)
+      val matches    = QueryEngine.search(graph, query, maxResults)
+      val written    = JsonOutput.writeSearchResult(matches, query, graph, outFile)
+      streams.value.log.info(written.toAbsolutePath.toString)
+    },
+    graphModule := {
+      val args = spaceDelimited("<args>").parsed
+      if (args.isEmpty) sys.error("Usage: graphModule <path-prefix>")
+      val prefix     = args(0)
+      val roots      = graphSemanticdbRoots.value
+      val sourceRoot = Some((ThisBuild / baseDirectory).value.toPath)
+      val outFile    = JsonOutput.nextOutputFile((target.value / "call-graph").toPath)
+      val graph      = CallGraphState.getOrLoad(roots, sourceRoot)
+      val result     = QueryEngine.moduleEdges(graph, prefix)
+      val written    = JsonOutput.writeModuleResult(result, prefix, graph, outFile)
       streams.value.log.info(written.toAbsolutePath.toString)
     },
     graphIndex := {

@@ -93,7 +93,9 @@ sbtn "analyzer/publishLocal; plugin/scripted"
 | 5 | Main CLI | ✅ done |
 | 6 | SBT Plugin (GraphExplorerPlugin) | ✅ done |
 | 7 | Scripted test | ✅ done |
-| 8 | Подключение к blank-slate-server | ⬜ pending |
+| 8 | Подключение к blank-slate-server | ✅ done |
+| 9 | graphSearch — поиск вершин по подстроке имени/FQN | ✅ done |
+| 10 | graphModule — анализ cross-module рёбер по path-prefix | ✅ done |
 
 ---
 
@@ -122,6 +124,4 @@ sbtn "analyzer/publishLocal; plugin/scripted"
 
 ## Open Questions
 
-1. Как передавать FQN из SBT-плагина в `analyzer` (Scala 2.12 vs 2.13): subprocess `java -jar`, `sbt-assembly`, или скопировать source в plugin?
-2. Нужен ли `graphSearch keyword` для поиска по частичному имени?
-3. Покрытие implicit/for-comprehension вызовов — проверить на реальном `blank-slate-server`.
+1. Покрытие implicit/for-comprehension вызовов — проверить на реальном `blank-slate-server`.

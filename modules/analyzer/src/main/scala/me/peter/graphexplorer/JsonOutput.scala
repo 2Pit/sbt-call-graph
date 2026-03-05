@@ -72,6 +72,36 @@ object JsonOutput {
     write(outFile, obj(fields: _*))
   }
 
+  def writeSearchResult(
+      matches:  Seq[String],
+      query:    String,
+      graph:    LoadedGraph,
+      outFile:  Path,
+  ): Path = {
+    val fields = Seq(
+      "query"   -> str(query),
+      "count"   -> matches.size.toString,
+      "matches" -> arr(matches.map(nodeJson(_, graph))),
+    )
+    write(outFile, obj(fields: _*))
+  }
+
+  def writeModuleResult(
+      result:  QueryEngine.ModuleResult,
+      prefix:  String,
+      graph:   LoadedGraph,
+      outFile: Path,
+  ): Path = {
+    def edgeJson(e: QueryEngine.ModuleEdge): String =
+      obj("from" -> nodeJson(e.srcId, graph), "to" -> nodeJson(e.tgtId, graph))
+    val fields = Seq(
+      "query"    -> obj("prefix" -> str(prefix)),
+      "outgoing" -> arr(result.outgoing.map(edgeJson)),
+      "incoming" -> arr(result.incoming.map(edgeJson)),
+    )
+    write(outFile, obj(fields: _*))
+  }
+
   def writeIndex(graph: LoadedGraph, status: String, compileError: Boolean, outFile: Path): Path = {
     // nodeCount = project-defined methods only; edgeCount includes edges to external symbols
     val fields = Seq(

@@ -3,12 +3,15 @@
 
 # graphIndex: should write diagnostics file
 > graphIndex
-$ exists target/graph-last-result.json
+$ exists target/call-graph/1.json
 
 # graphVia: callers/callees of Helper.compute
 > graphVia me/example/Helper.compute().
-$ exists target/graph-last-result.json
+$ exists target/call-graph/2.json
 
 # graphPath: path from Caller.doSomething to Helper.compute
 > graphPath me/example/Caller.doSomething(). me/example/Helper.compute().
-$ exists target/graph-last-result.json
+$ exists target/call-graph/3.json
+
+# graphCheck: assert specific edges including for-comprehension and explicit flatMap
+> graphCheck

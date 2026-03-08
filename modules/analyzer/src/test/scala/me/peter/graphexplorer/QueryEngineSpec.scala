@@ -108,6 +108,59 @@ class QueryEngineSpec extends FunSuite {
   }
 
   // ---------------------------------------------------------------------------
+  // viaVertex: strict directionality — BFS never mixes in/out edges
+  // ---------------------------------------------------------------------------
+
+  test("viaVertex: out-only reachable node does not appear in in-set") {
+    // B→C: C is a callee (out); it must NOT appear as a caller (in)
+    val g = makeGraph(Seq("A" -> "B", "B" -> "C"))
+    val r = QueryEngine.viaVertex(g, "B", depthIn = 2, depthOut = 2).get
+    assert(!r.in.map(_.id).contains("C"), "C is a callee, must not appear in callers")
+  }
+
+  test("viaVertex: in-only reachable node does not appear in out-set") {
+    // A→B: A is a caller (in); it must NOT appear as a callee (out)
+    val g = makeGraph(Seq("A" -> "B", "B" -> "C"))
+    val r = QueryEngine.viaVertex(g, "B", depthIn = 2, depthOut = 2).get
+    assert(!r.out.map(_.id).contains("A"), "A is a caller, must not appear in callees")
+  }
+
+  test("viaVertex: depthOut=0 returns empty out-set") {
+    val g = makeGraph(Seq("A" -> "B", "B" -> "C"))
+    val r = QueryEngine.viaVertex(g, "B", depthIn = 1, depthOut = 0).get
+    assertEquals(r.out, Seq.empty[QueryEngine.DepthNode])
+  }
+
+  test("viaVertex: in-traversal does not follow out-edges from intermediate nodes") {
+    // Graph: X→A→B→C; queried vertex = B
+    // in-traversal should reach A (depth 1) and X (depth 2)
+    // C is only reachable via B's out-edge — must NOT appear in in-set
+    val g = makeGraph(Seq("X" -> "A", "A" -> "B", "B" -> "C"))
+    val r = QueryEngine.viaVertex(g, "B", depthIn = 3, depthOut = 0).get
+    assertEquals(r.in.map(_.id).toSet, Set("A", "X"))
+    assert(!r.in.map(_.id).contains("C"), "C is only reachable via out-edge, must not appear in in-set")
+    assertEquals(r.out, Seq.empty[QueryEngine.DepthNode], "depthOut=0 must produce empty out-set")
+  }
+
+  test("viaVertex: out-traversal does not follow in-edges from intermediate nodes") {
+    // Graph: X→B→C, A→C; queried vertex = B
+    // out-traversal should reach C (depth 1)
+    // A is only reachable by following C's in-edge — must NOT appear in out-set
+    val g = makeGraph(Seq("X" -> "B", "B" -> "C", "A" -> "C"))
+    val r = QueryEngine.viaVertex(g, "B", depthIn = 1, depthOut = 3).get
+    assertEquals(r.out.map(_.id).toSet, Set("C"))
+    assert(!r.out.map(_.id).contains("A"), "A reaches C via in-edge, must not appear in out-set")
+  }
+
+  test("viaVertex: mutual call — node in both in and out sets independently") {
+    // A↔B (A→B and B→A); queried vertex = A
+    val g = makeGraph(Seq("A" -> "B", "B" -> "A"))
+    val r = QueryEngine.viaVertex(g, "A", depthIn = 1, depthOut = 1).get
+    assert(r.in.map(_.id).contains("B"),  "B calls A, so it should appear in in-set")
+    assert(r.out.map(_.id).contains("B"), "A calls B, so it should appear in out-set")
+  }
+
+  // ---------------------------------------------------------------------------
   // search
   // ---------------------------------------------------------------------------
 

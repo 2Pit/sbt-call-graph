@@ -133,6 +133,8 @@ object QueryEngine {
     val visited = mutable.Map.empty[String, Int] // node -> hop count
     val queue   = mutable.Queue.empty[(String, Int)]
 
+    if (depth <= 0) return Nil
+
     edges.getOrElse(start, Set.empty).foreach { n =>
       visited(n) = 1
       queue.enqueue((n, 1))

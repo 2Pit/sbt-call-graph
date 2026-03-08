@@ -43,8 +43,25 @@ object GraphLoader {
     val inB   = collection.mutable.Map.empty[String, collection.mutable.Set[String]]
     val metaB = collection.mutable.Map.empty[String, NodeMeta]
 
+    // Pass 1: build a global kindOf across ALL files so cross-file METHOD references
+    // are not filtered out when building edges in pass 2.
+    val globalKindOf = collection.mutable.Map.empty[String, SymbolInformation.Kind]
     files.foreach { path =>
-      try processFile(path, projectRoot, outB, inB, metaB)
+      try {
+        val docs = TextDocuments.parseFrom(Files.readAllBytes(path))
+        docs.documents.foreach { doc =>
+          doc.symbols.foreach { s =>
+            if (s.kind != SymbolInformation.Kind.UNKNOWN_KIND) globalKindOf(s.symbol) = s.kind
+          }
+        }
+      } catch {
+        case _: Exception => // errors reported in pass 2
+      }
+    }
+
+    // Pass 2: build graph edges using global symbol kinds.
+    files.foreach { path =>
+      try processFile(path, projectRoot, globalKindOf.toMap, outB, inB, metaB)
       catch {
         case e: Exception =>
           System.err.println(s"[graph-explorer] WARNING: failed to parse $path: ${e.getMessage}")
@@ -66,6 +83,7 @@ object GraphLoader {
   private def processFile(
       path: Path,
       projectRoot: Option[Path],
+      kindOf: Map[String, SymbolInformation.Kind],
       out: collection.mutable.Map[String, collection.mutable.Set[String]],
       in: collection.mutable.Map[String, collection.mutable.Set[String]],
       meta: collection.mutable.Map[String, NodeMeta],
@@ -74,9 +92,6 @@ object GraphLoader {
     val docs  = TextDocuments.parseFrom(bytes)
 
     docs.documents.foreach { doc =>
-      val kindOf: Map[String, SymbolInformation.Kind] =
-        doc.symbols.map(s => s.symbol -> s.kind).toMap
-
       val displayNameOf: Map[String, String] =
         doc.symbols.map(s => s.symbol -> s.displayName).toMap
 
@@ -103,7 +118,7 @@ object GraphLoader {
             file = doc.uri,
             startLine = line,
             endLine = endLineOf.getOrElse(line, line),
-            displayName = displayNameOf.getOrElse(sym, sym),
+            displayName = displayNameOf.getOrElse(sym, sym) + overloadSuffix(sym),
           )
         }
       }
@@ -132,6 +147,20 @@ object GraphLoader {
           if (caller != callee) {
             out.getOrElseUpdate(caller, collection.mutable.Set.empty) += callee
             in.getOrElseUpdate(callee, collection.mutable.Set.empty) += caller
+          }
+        }
+      }
+
+      // Override resolution (CHA): for each method that overrides a trait/abstract method,
+      // add a virtual dispatch edge traitMethod → implMethod.
+      // This makes callers of the trait method transitively reachable from the implementation.
+      doc.symbols.foreach { sym =>
+        if (sym.kind == SymbolInformation.Kind.METHOD && sym.overriddenSymbols.nonEmpty) {
+          sym.overriddenSymbols.foreach { traitSym =>
+            if (!isSynthetic(traitSym) && traitSym != sym.symbol) {
+              out.getOrElseUpdate(traitSym, collection.mutable.Set.empty) += sym.symbol
+              in.getOrElseUpdate(sym.symbol, collection.mutable.Set.empty) += traitSym
+            }
           }
         }
       }
@@ -208,5 +237,16 @@ object GraphLoader {
       case _: OriginalTree | _: MacroExpansionTree => Nil
       case _                                        => Nil
     }
+  }
+
+  /** Extract the overload suffix "(+N)" from a SemanticDB symbol, or "" if not overloaded.
+   *  Example: "sreo/Foo#close(+1)." → "(+1)"
+   */
+  private def overloadSuffix(symbol: String): String = {
+    val open  = symbol.lastIndexOf('(')
+    val close = symbol.indexOf(')', open + 1)
+    if (open < 0 || close < 0) return ""
+    val inner = symbol.substring(open + 1, close)
+    if (inner.startsWith("+")) symbol.substring(open, close + 1) else ""
   }
 }

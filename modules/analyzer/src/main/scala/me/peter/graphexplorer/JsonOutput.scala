@@ -2,63 +2,51 @@ package me.peter.graphexplorer
 
 import java.nio.file.{Files, Path}
 import java.nio.charset.StandardCharsets
+import scala.util.matching.Regex
 
 object JsonOutput {
 
-  /** Returns the next available `dir/<prefix>N.json` path, thread-safe within this JVM. */
-  def nextOutputFile(dir: Path, prefix: String = ""): Path = nextFileLock.synchronized {
-    Files.createDirectories(dir)
-    import scala.collection.JavaConverters._
-    val stream = Files.list(dir)
-    val suffix = ".json"
-    val max    =
-      try
-        stream
-          .iterator()
-          .asScala
-          .map(_.getFileName.toString)
-          .filter(n => n.startsWith(prefix) && n.endsWith(suffix))
-          .flatMap(n => scala.util.Try(n.drop(prefix.length).dropRight(suffix.length).toLong).toOption)
-          .reduceOption(_ max _)
-          .getOrElse(0L)
-      finally stream.close()
-    dir.resolve(s"$prefix${max + 1}.json")
-  }
+  /** Returns the next available `dir/N.json` path using a shared counter with MermaidOutput. */
+  def nextOutputFile(dir: Path): Path = OutputCounter.next(dir, ".json")
 
   private val nextFileLock = new Object
 
   def writePathResult(
-      result: QueryEngine.PathResult,
-      from: String,
-      to: String,
+      result:       QueryEngine.PathResult,
+      from:         String,
+      to:           String,
       compileError: Boolean,
-      graph: LoadedGraph,
-      outFile: Path,
+      graph:        LoadedGraph,
+      outFile:      Path,
+      filterOut:    Seq[Regex] = Nil,
   ): Path = {
+    val filteredPaths = applyFilter(result.paths, filterOut)
     val fields = Seq(
       "query"     -> obj("from" -> str(from), "to" -> str(to)),
-      "found"     -> result.paths.nonEmpty.toString,
+      "found"     -> filteredPaths.nonEmpty.toString,
       "truncated" -> result.truncated.toString,
-      "paths"     -> arr(result.paths.map(path => arr(path.map(nodeJson(_, graph))))),
+      "paths"     -> arr(filteredPaths.map(path => arr(path.map(nodeJson(_, graph))))),
     ) ++ (if (compileError) Seq("compileError" -> "true") else Nil)
     write(outFile, obj(fields: _*))
   }
 
   def writeViaResult(
-      result: Option[QueryEngine.ViaResult],
-      vertex: String,
-      depthIn: Int,
-      depthOut: Int,
+      result:       Option[QueryEngine.ViaResult],
+      vertex:       String,
+      depthIn:      Int,
+      depthOut:     Int,
       compileError: Boolean,
-      graph: LoadedGraph,
-      outFile: Path,
+      graph:        LoadedGraph,
+      outFile:      Path,
+      filterOut:    Seq[Regex] = Nil,
   ): Path = {
+    val hidden = (id: String) => filterOut.exists(_.findFirstIn(id).isDefined)
     val (vertexJson, inArr, outArr) = result match {
       case Some(r) =>
         (
           nodeJson(vertex, graph),
-          arr(r.in.map(n => depthNodeJson(n, graph))),
-          arr(r.out.map(n => depthNodeJson(n, graph)))
+          arr(r.in.filterNot(n => hidden(n.id)).map(n => depthNodeJson(n, graph))),
+          arr(r.out.filterNot(n => hidden(n.id)).map(n => depthNodeJson(n, graph)))
         )
       case None =>
         ("null", "[]", "[]")
@@ -71,6 +59,10 @@ object JsonOutput {
     ) ++ (if (compileError) Seq("compileError" -> "true") else Nil)
     write(outFile, obj(fields: _*))
   }
+
+  private def applyFilter(paths: Seq[Seq[String]], filterOut: Seq[Regex]): Seq[Seq[String]] =
+    if (filterOut.isEmpty) paths
+    else paths.filterNot(path => path.exists(n => filterOut.exists(_.findFirstIn(n).isDefined)))
 
   def writeSearchResult(
       matches:  Seq[String],

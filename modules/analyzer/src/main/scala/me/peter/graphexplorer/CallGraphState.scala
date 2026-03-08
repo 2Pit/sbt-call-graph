@@ -1,23 +1,26 @@
 package me.peter.graphexplorer
 
-import java.nio.file.{Files, Path}
-import scala.collection.JavaConverters._
+import java.nio.file.Path
 
 object CallGraphState {
 
-  private case class Cached(roots: Set[Path], mtime: Long, sourceRoot: Option[Path], graph: LoadedGraph)
+  private case class Cached(roots: Set[Path], stamp: Long, sourceRoot: Option[Path], graph: LoadedGraph)
 
   @volatile private var cached: Option[Cached] = None
 
-  def getOrLoad(semanticdbRoots: Seq[Path], sourceRoot: Option[Path] = None): LoadedGraph = {
+  /** `stamp` should be a value that changes when the SemanticDB files are regenerated
+   *  (e.g. the mtime of SBT's compile-analysis file).  A cache hit requires the same
+   *  roots, same sourceRoot, AND the same stamp — so the file walk that used to happen
+   *  on every call is gone entirely.
+   */
+  def getOrLoad(semanticdbRoots: Seq[Path], sourceRoot: Option[Path] = None, stamp: Long = 0L): LoadedGraph = {
     val rootSet = semanticdbRoots.toSet
-    val mtime   = semanticdbRoots.map(lastModified).reduceOption(_ max _).getOrElse(0L)
     cached match {
-      case Some(c) if c.roots == rootSet && c.mtime == mtime && c.sourceRoot == sourceRoot =>
+      case Some(c) if c.roots == rootSet && c.stamp == stamp && c.sourceRoot == sourceRoot =>
         c.graph
       case _ =>
         val graph = GraphLoader.load(semanticdbRoots, sourceRoot)
-        synchronized { cached = Some(Cached(rootSet, mtime, sourceRoot, graph)) }
+        synchronized { cached = Some(Cached(rootSet, stamp, sourceRoot, graph)) }
         graph
     }
   }
@@ -27,19 +30,5 @@ object CallGraphState {
   def status: String = cached match {
     case None    => "not loaded"
     case Some(c) => s"loaded (nodes=${c.graph.nodeCount}, edges=${c.graph.edgeCount})"
-  }
-
-  private def lastModified(dir: Path): Long = {
-    if (!Files.exists(dir)) return 0L
-    val stream = Files.walk(dir)
-    try
-      stream
-        .iterator()
-        .asScala
-        .filter(p => Files.isRegularFile(p) && p.toString.endsWith(".semanticdb"))
-        .map(Files.getLastModifiedTime(_).toMillis)
-        .reduceOption(_ max _)
-        .getOrElse(0L)
-    finally stream.close()
   }
 }

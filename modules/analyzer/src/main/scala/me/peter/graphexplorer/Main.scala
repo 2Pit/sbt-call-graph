@@ -1,11 +1,15 @@
 package me.peter.graphexplorer
 
-import java.nio.file.Paths
+import java.nio.file.{Files, Paths}
+import java.nio.charset.StandardCharsets
 
 /*
  * CLI entry point.
  *
  * Usage:
+ *   run demo [<out-file>]
+ *     -- write a self-contained demo HTML graph to <out-file> (default: graph-demo.html)
+ *
  *   run <semanticdb-dir>
  *     -- print stats (node/edge counts, top callers)
  *
@@ -17,8 +21,16 @@ import java.nio.file.Paths
  */
 object Main extends App {
   if (args.isEmpty) {
-    println("Usage: run <semanticdb-dir> [path <from> <to> | via <vertex>] [--maxDepth N] [--maxPaths N]")
+    println("Usage: run demo | run <semanticdb-dir> [path <from> <to> | via <vertex> | search <query> | module <prefix>]")
     sys.exit(1)
+  }
+
+  // `demo` command needs no semanticdb-dir
+  if (args(0) == "demo") {
+    val outPath = Paths.get(if (args.length > 1) args(1) else "graph-demo.html").toAbsolutePath
+    Files.write(outPath, HtmlOutput.renderDemo().getBytes(StandardCharsets.UTF_8))
+    println(outPath.toString)
+    sys.exit(0)
   }
 
   val semanticdbDir = Paths.get(args(0))

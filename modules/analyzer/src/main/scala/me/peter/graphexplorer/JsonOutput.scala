@@ -9,8 +9,6 @@ object JsonOutput {
   /** Returns the next available `dir/N.json` path using a shared counter with MermaidOutput. */
   def nextOutputFile(dir: Path): Path = OutputCounter.next(dir, ".json")
 
-  private val nextFileLock = new Object
-
   def writePathResult(
       result:       QueryEngine.PathResult,
       from:         String,
@@ -105,34 +103,22 @@ object JsonOutput {
   }
 
   // startLine/endLine stored 0-based in SemanticDB; +1 for human-readable output
+  private def metaFields(id: String, meta: Option[NodeMeta]): Seq[(String, String)] = meta match {
+    case Some(m) => Seq(
+      "id"          -> str(id),
+      "displayName" -> str(m.displayName),
+      "file"        -> str(m.file),
+      "startLine"   -> (m.startLine + 1).toString,
+      "endLine"     -> (m.endLine + 1).toString,
+    )
+    case None => Seq("id" -> str(id))
+  }
+
   private def nodeJson(id: String, graph: LoadedGraph): String =
-    graph.meta.get(id) match {
-      case Some(m) =>
-        obj(
-          "id"          -> str(id),
-          "displayName" -> str(m.displayName),
-          "file"        -> str(m.file),
-          "startLine"   -> (m.startLine + 1).toString,
-          "endLine"     -> (m.endLine + 1).toString,
-        )
-      case None =>
-        obj("id" -> str(id))
-    }
+    obj(metaFields(id, graph.meta.get(id)): _*)
 
   private def depthNodeJson(node: QueryEngine.DepthNode, graph: LoadedGraph): String =
-    graph.meta.get(node.id) match {
-      case Some(m) =>
-        obj(
-          "id"          -> str(node.id),
-          "displayName" -> str(m.displayName),
-          "file"        -> str(m.file),
-          "startLine"   -> (m.startLine + 1).toString,
-          "endLine"     -> (m.endLine + 1).toString,
-          "depth"       -> node.depth.toString,
-        )
-      case None =>
-        obj("id" -> str(node.id), "depth" -> node.depth.toString)
-    }
+    obj((metaFields(node.id, graph.meta.get(node.id)) :+ ("depth" -> node.depth.toString)): _*)
 
   private def str(s: String): String =
     "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n") + "\""

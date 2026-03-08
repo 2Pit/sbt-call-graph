@@ -21,3 +21,9 @@ final case class LoadedGraph(
 object LoadedGraph {
   val empty: LoadedGraph = LoadedGraph(Map.empty, Map.empty, Map.empty)
 }
+
+/** Sort a collection of node FQNs by source location (file asc, startLine asc). */
+private[graphexplorer] object NodeSort {
+  def byLocation(ids: Iterable[String], meta: Map[String, NodeMeta]): Seq[String] =
+    ids.toSeq.sortBy(id => meta.get(id).map(m => (m.file, m.startLine)).getOrElse(("", 0)))
+}

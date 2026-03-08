@@ -85,11 +85,10 @@ object QueryEngine {
    * Returns up to `maxResults` matching IDs, sorted by (file, startLine).
    */
   def search(graph: LoadedGraph, query: String, maxResults: Int = 50): Seq[String] =
-    graph.meta
-      .collect { case (id, m) if m.displayName.contains(query) || id.contains(query) => id }
-      .toSeq
-      .sortBy(id => graph.meta.get(id).map(m => (m.file, m.startLine)).getOrElse(("", 0)))
-      .take(maxResults)
+    NodeSort.byLocation(
+      graph.meta.collect { case (id, m) if m.displayName.contains(query) || id.contains(query) => id },
+      graph.meta,
+    ).take(maxResults)
 
   final case class ModuleEdge(srcId: String, tgtId: String)
   final case class ModuleResult(outgoing: Seq[ModuleEdge], incoming: Seq[ModuleEdge])

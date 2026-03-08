@@ -105,6 +105,22 @@
 
 ---
 
+## Шаг 11 — For-comprehension / synthetic edges
+
+- [ ] Читать `doc.synthetics` в `GraphLoader`, извлекать METHOD-символы рекурсивным обходом `Synthetic.tree`
+- [ ] Добавить `isAnon: Boolean` в `NodeMeta`; анонимные функции (`local\d+` / Kind.LOCAL) помечать как anon
+- [ ] В `QueryEngine`: при обходе прозрачно проходить через anon-узлы — не наращивать depth, не включать в вывод пути
+
+---
+
+## Шаг 12 — Mermaid-вывод
+
+- [ ] `MermaidOutput` в `analyzer`: принимает тот же query result что `JsonOutput`; группирует узлы по basename файла → `subgraph`; sanitize FQN → валидный Mermaid node ID; рендерит `flowchart LR` со стрелками
+- [ ] Пишет `target/call-graph/N.md` рядом с `N.json`
+- [ ] Новый таск `graphMermaid` в плагине — те же аргументы что у `graphVia`
+
+---
+
 ## Текущий статус
 
 | Шаг | Статус |
@@ -115,6 +131,11 @@
 | 3 — CallGraphState | ✅ done |
 | 4 — JsonOutput | ✅ done |
 | 5 — Main CLI | ✅ done |
-| 6 — SBT Plugin | pending |
-| 7 — Scripted test | pending |
-| 8 — Подключение к blank-slate-server | pending |
+| 6 — SBT Plugin | ✅ done |
+| 7 — Scripted test | ✅ done |
+| 8 — Подключение к blank-slate-server | ✅ done |
+| 9 — graphSearch | ✅ done |
+| 10 — graphModule | ✅ done |
+| 11 — Synthetics (for-comprehension edges) | ✅ done |
+| 11 — QueryEngine unit tests | ✅ done |
+| 12 — Mermaid-вывод | ⬜ todo |

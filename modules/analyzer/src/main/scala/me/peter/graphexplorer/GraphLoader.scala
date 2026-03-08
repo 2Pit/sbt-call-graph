@@ -135,6 +135,23 @@ object GraphLoader {
           }
         }
       }
+
+      // Synthetic call sites: for-comprehension desugaring (flatMap/map/withFilter),
+      // implicit conversions, etc. These are absent from doc.occurrences.
+      // Lambda bodies (FunctionTree) are traversed transparently — calls inside them
+      // are attributed to the enclosing named method via callerAt, no anon nodes added.
+      doc.synthetics.foreach { synthetic =>
+        synthetic.range.foreach { range =>
+          callerAt(range.startLine).foreach { caller =>
+            extractSyntheticSymbols(synthetic.tree).foreach { callee =>
+              if (caller != callee && !isSynthetic(callee)) {
+                out.getOrElseUpdate(caller, collection.mutable.Set.empty) += callee
+                in.getOrElseUpdate(callee, collection.mutable.Set.empty) += caller
+              }
+            }
+          }
+        }
+      }
     }
   }
 
@@ -163,4 +180,33 @@ object GraphLoader {
   private def isSynthetic(symbol: String): Boolean =
     symbol.isEmpty ||
       (symbol.length > 5 && symbol.startsWith("local") && symbol.drop(5).forall(Character.isDigit))
+
+  /**
+   * Recursively extract method-symbol references from a SemanticDB Synthetic.tree.
+   * FunctionTree bodies are traversed transparently (lambda is not added as a node).
+   * OriginalTree nodes are skipped — their occurrences are already in doc.occurrences.
+   */
+  private def extractSyntheticSymbols(tree: scala.meta.internal.semanticdb.Tree): List[String] = {
+    import scala.meta.internal.semanticdb.{
+      ApplyTree, FunctionTree, IdTree, MacroExpansionTree,
+      OriginalTree, SelectTree, TypeApplyTree,
+    }
+    tree match {
+      case t: ApplyTree =>
+        extractSyntheticSymbols(t.function) ++
+          t.arguments.flatMap(a => extractSyntheticSymbols(a))
+      case t: TypeApplyTree =>
+        extractSyntheticSymbols(t.function)
+      case t: SelectTree =>
+        val sym  = t.id.map(_.symbol).getOrElse("")
+        val self = if (sym.nonEmpty) List(sym) else Nil
+        self ++ extractSyntheticSymbols(t.qualifier)
+      case t: FunctionTree =>
+        extractSyntheticSymbols(t.body)
+      case t: IdTree =>
+        if (t.symbol.nonEmpty) List(t.symbol) else Nil
+      case _: OriginalTree | _: MacroExpansionTree => Nil
+      case _                                        => Nil
+    }
+  }
 }

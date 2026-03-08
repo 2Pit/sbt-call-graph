@@ -10,7 +10,9 @@ object GraphExplorerPlugin extends AutoPlugin {
   override def trigger = noTrigger
 
   object autoImport {
-    val graphPath = inputKey[Unit]("Find call paths. Usage: graphPath <from> <to> [--maxDepth N] [--maxPaths N]")
+    val graphPath = inputKey[Unit](
+      "Find call paths. Usage: graphPath <v1> <v2> [<v3>...] [--maxDepth N] [--maxPaths N]"
+    )
     val graphVia  = inputKey[Unit](
       "Show callers/callees of a vertex. Usage: graphVia <vertex> [--depth N] [--depthIn N] [--depthOut N]"
     )
@@ -37,20 +39,18 @@ object GraphExplorerPlugin extends AutoPlugin {
     },
     graphPath := {
       // --- SBT task dependencies (macro evaluates these before the task body) ---
-      val args         = spaceDelimited("<args>").parsed
+      val args          = spaceDelimited("<args>").parsed
       val compileResult = (Compile / compile).result.value
-      val roots        = graphSemanticdbRoots.value
-      val sourceRoot   = Some((ThisBuild / baseDirectory).value.toPath)
-      val graphDir     = (target.value / "call-graph").toPath
-      val analysisFile = (Compile / compileAnalysisFile).value
-      val log          = streams.value.log
+      val roots         = graphSemanticdbRoots.value
+      val sourceRoot    = Some((ThisBuild / baseDirectory).value.toPath)
+      val graphDir      = (target.value / "call-graph").toPath
+      val analysisFile  = (Compile / compileAnalysisFile).value
+      val log           = streams.value.log
 
       // --- Task body ---
       val positional = args.filterNot(_.startsWith("--"))
       if (positional.length < 2)
-        sys.error("Usage: graphPath <from> <to> [--maxDepth N] [--maxPaths N] [--format md|html]")
-      val from         = positional(0)
-      val to           = positional(1)
+        sys.error("Usage: graphPath <v1> <v2> [<v3>...] [--maxDepth N] [--maxPaths N] [--format md|html]")
       val maxDepth     = flagInt(args, "--maxDepth", 20)
       val maxPaths     = flagInt(args, "--maxPaths", 100)
       val format       = flagString(args, "--format", "json")
@@ -62,32 +62,32 @@ object GraphExplorerPlugin extends AutoPlugin {
       val graph = CallGraphState.getOrLoad(roots, sourceRoot, stamp)
       val t1    = System.currentTimeMillis()
 
-      val result = QueryEngine.pathAtoB(graph, from, to, maxDepth, maxPaths)
+      val result = QueryEngine.pathsAmong(graph, positional, maxDepth, maxPaths)
       val t2     = System.currentTimeMillis()
 
       val written = format match {
-        case "md"  => MermaidOutput.writePathResult(result, graph, MermaidOutput.nextOutputFile(graphDir))
-        case "html" => HtmlOutput.writePathResult(result, graph, HtmlOutput.nextOutputFile(graphDir), filterOut)
-        case "dot"  => DotOutput.writePathResult(result, graph, DotOutput.nextOutputFile(graphDir), filterOut)
-        case _      => JsonOutput.writePathResult(result, from, to, compileError, graph, JsonOutput.nextOutputFile(graphDir), filterOut)
+        case "md"   => MermaidOutput.writeGraphResult(result, graph, MermaidOutput.nextOutputFile(graphDir))
+        case "html" => HtmlOutput.writeGraphResult(result, "graphPath", graph, HtmlOutput.nextOutputFile(graphDir), filterOut)
+        case "dot"  => DotOutput.writeGraphResult(result, "graphPath", graph, DotOutput.nextOutputFile(graphDir), filterOut)
+        case _      => JsonOutput.writePathResult(result, positional, compileError, graph, JsonOutput.nextOutputFile(graphDir), filterOut)
       }
       val t3 = System.currentTimeMillis()
 
       log.info(f"[graph] graph load  ${t1 - t0}%5d ms  (nodes=${graph.nodeCount}, edges=${graph.edgeCount})")
-      log.info(f"[graph] query       ${t2 - t1}%5d ms  (paths=${result.paths.size})")
+      log.info(f"[graph] query       ${t2 - t1}%5d ms  (nodes=${result.nodes.size})")
       log.info(f"[graph] output      ${t3 - t2}%5d ms")
       log.info(f"[graph] total       ${t3 - t0}%5d ms")
       log.info(written.toAbsolutePath.toString)
     },
     graphVia := {
       // --- SBT task dependencies ---
-      val args         = spaceDelimited("<args>").parsed
+      val args          = spaceDelimited("<args>").parsed
       val compileResult = (Compile / compile).result.value
-      val roots        = graphSemanticdbRoots.value
-      val sourceRoot   = Some((ThisBuild / baseDirectory).value.toPath)
-      val graphDir     = (target.value / "call-graph").toPath
-      val analysisFile = (Compile / compileAnalysisFile).value
-      val log          = streams.value.log
+      val roots         = graphSemanticdbRoots.value
+      val sourceRoot    = Some((ThisBuild / baseDirectory).value.toPath)
+      val graphDir      = (target.value / "call-graph").toPath
+      val analysisFile  = (Compile / compileAnalysisFile).value
+      val log           = streams.value.log
 
       // --- Task body ---
       if (args.isEmpty)
@@ -108,19 +108,18 @@ object GraphExplorerPlugin extends AutoPlugin {
       val result = QueryEngine.viaVertex(graph, vertex, depthIn, depthOut)
       val t2     = System.currentTimeMillis()
 
+      val title   = graph.meta.get(vertex).map(_.displayName).getOrElse(vertex)
+      val gr      = result.getOrElse(QueryEngine.GraphResult.empty)
       val written = format match {
-        case "md"   => MermaidOutput.writeViaResult(result, vertex, graph, MermaidOutput.nextOutputFile(graphDir))
-        case "html" => HtmlOutput.writeViaResult(result, vertex, graph, HtmlOutput.nextOutputFile(graphDir), filterOut)
-        case "dot"  => DotOutput.writeViaResult(result, vertex, graph, DotOutput.nextOutputFile(graphDir), filterOut)
-        case _      =>
-          JsonOutput.writeViaResult(result, vertex, depthIn, depthOut, compileError, graph, JsonOutput.nextOutputFile(graphDir), filterOut)
+        case "md"   => MermaidOutput.writeGraphResult(gr, graph, MermaidOutput.nextOutputFile(graphDir))
+        case "html" => HtmlOutput.writeGraphResult(gr, s"graphVia: $title", graph, HtmlOutput.nextOutputFile(graphDir), filterOut)
+        case "dot"  => DotOutput.writeGraphResult(gr, s"graphVia: $title", graph, DotOutput.nextOutputFile(graphDir), filterOut)
+        case _      => JsonOutput.writeViaResult(result, vertex, depthIn, depthOut, compileError, graph, JsonOutput.nextOutputFile(graphDir), filterOut)
       }
       val t3 = System.currentTimeMillis()
 
-      val inCount  = result.map(_.in.size).getOrElse(0)
-      val outCount = result.map(_.out.size).getOrElse(0)
       log.info(f"[graph] graph load  ${t1 - t0}%5d ms  (nodes=${graph.nodeCount}, edges=${graph.edgeCount})")
-      log.info(f"[graph] query       ${t2 - t1}%5d ms  (in=$inCount, out=$outCount)")
+      log.info(f"[graph] query       ${t2 - t1}%5d ms  (nodes=${gr.nodes.size})")
       log.info(f"[graph] output      ${t3 - t2}%5d ms")
       log.info(f"[graph] total       ${t3 - t0}%5d ms")
       log.info(written.toAbsolutePath.toString)

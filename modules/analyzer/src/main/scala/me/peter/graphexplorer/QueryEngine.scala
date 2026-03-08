@@ -4,17 +4,20 @@ import scala.collection.mutable
 
 object QueryEngine {
 
-  final case class PathResult(
-      paths:     Seq[Seq[String]], // each path is a list of node FQNs
-      truncated: Boolean,
+  /** Universal result type for path and neighbourhood queries. */
+  final case class GraphResult(
+      nodes:     Seq[String],             // sorted by (file, startLine)
+      edges:     Seq[(String, String)],   // (caller, callee) pairs
+      truncated: Boolean = false,
   )
+
+  object GraphResult {
+    val empty: GraphResult = GraphResult(Nil, Nil)
+  }
 
   /**
    * Find simple paths from `from` to `to` in the call graph using DFS.
-   * Results are NOT guaranteed to be sorted by length; use maxPaths to bound output.
-   *
-   * @param maxDepth  max path length (number of edges)
-   * @param maxPaths  stop after collecting this many paths
+   * Returns a GraphResult: union of all path nodes and consecutive path edges.
    */
   def pathAtoB(
       graph:    LoadedGraph,
@@ -22,63 +25,65 @@ object QueryEngine {
       to:       String,
       maxDepth: Int = 20,
       maxPaths: Int = 100,
-  ): PathResult = {
-    if (!graph.meta.contains(from)) return PathResult(Nil, truncated = false)
-    if (!graph.meta.contains(to))   return PathResult(Nil, truncated = false)
-    if (from == to)                 return PathResult(Seq(Seq(from)), truncated = false)
+  ): GraphResult = {
+    if (!graph.meta.contains(from)) return GraphResult.empty
+    if (!graph.meta.contains(to))   return GraphResult.empty
+    if (from == to) return GraphResult(Seq(from), Nil)
 
-    val results = mutable.ListBuffer.empty[Seq[String]]
+    val (paths, truncated) = collectPaths(graph, from, Set(to), maxDepth, maxPaths)
+    buildResult(paths, truncated, graph.meta)
+  }
+
+  /**
+   * Find paths among a set of vertices.
+   * For each prefix pair (v_i, remaining v[i+1..]), finds all directed paths from v_i to
+   * any vertex in v[i+1..]. The union of all found path nodes/edges is returned.
+   */
+  def pathsAmong(
+      graph:    LoadedGraph,
+      vertices: Seq[String],
+      maxDepth: Int = 20,
+      maxPaths: Int = 100,
+  ): GraphResult = {
+    val known = vertices.filter(graph.meta.contains)
+    if (known.size < 2) return GraphResult(NodeSort.byLocation(known.toSet, graph.meta), Nil)
+
+    val allPaths  = mutable.ListBuffer.empty[Seq[String]]
     var truncated = false
+    var remaining = maxPaths
 
-    val path    = mutable.ArrayBuffer[String](from)
-    val visited = mutable.Set[String](from)
-
-    def dfs(node: String): Unit = {
-      if (truncated) return
-      for (next <- graph.out.getOrElse(node, Set.empty)) {
-        if (!visited(next)) {
-          if (next == to) {
-            results += path.toList :+ next
-            if (results.size >= maxPaths) truncated = true
-          } else if (path.size - 1 < maxDepth) {
-            path    += next
-            visited += next
-            dfs(next)
-            visited -= next
-            path.remove(path.size - 1)
-          }
-        }
+    known.zipWithIndex.foreach { case (from, i) =>
+      if (!truncated) {
+        val targets        = known.drop(i + 1).toSet
+        val (paths, trunc) = collectPaths(graph, from, targets, maxDepth, remaining)
+        allPaths  ++= paths
+        remaining -= paths.size
+        if (trunc || remaining <= 0) truncated = true
       }
     }
 
-    dfs(from)
-    PathResult(results.toSeq, truncated)
+    buildResult(allPaths.toSeq, truncated, graph.meta)
   }
 
-  /** Node annotated with its BFS depth from the queried vertex. */
-  final case class DepthNode(id: String, depth: Int)
-
   /**
-   * @param in   methods that (transitively) call V, sorted by (depth, file, startLine)
-   * @param out  methods that V (transitively) calls, sorted by (depth, file, startLine)
-   */
-  final case class ViaResult(in: Seq[DepthNode], out: Seq[DepthNode])
-
-  /**
-   * Return the neighbourhood of vertex `v` up to `depth` BFS hops in each direction.
-   * Results are sorted by (depth asc, file asc, startLine asc).
+   * Return the neighbourhood of vertex `v` up to BFS depth in each direction.
+   * Returns all reachable nodes (including v) and the induced subgraph edges.
    */
   def viaVertex(
       graph:    LoadedGraph,
       v:        String,
       depthIn:  Int = 2,
       depthOut: Int = 2,
-  ): Option[ViaResult] =
-    if (!graph.meta.contains(v)) None
-    else Some(ViaResult(
-      in  = bfsWithDepth(v, depthIn,  graph.in,  graph.meta),
-      out = bfsWithDepth(v, depthOut, graph.out, graph.meta),
-    ))
+  ): Option[GraphResult] = {
+    if (!graph.meta.contains(v)) return None
+    val inNodes  = bfsNodes(v, depthIn,  graph.in)
+    val outNodes = bfsNodes(v, depthOut, graph.out)
+    val allNodes = inNodes ++ outNodes + v
+    val edges = allNodes.toSeq.flatMap { n =>
+      graph.out.getOrElse(n, Set.empty).collect { case t if allNodes(t) => n -> t }
+    }
+    Some(GraphResult(NodeSort.byLocation(allNodes, graph.meta), edges))
+  }
 
   /**
    * Search vertices whose FQN or displayName contains `query` (case-sensitive).
@@ -95,11 +100,7 @@ object QueryEngine {
 
   /**
    * Return all call-graph edges that cross the boundary of a module identified by `pathPrefix`.
-   * A vertex belongs to the module if its file path contains `pathPrefix`.
-   * Only edges where BOTH endpoints are known in meta are included (library calls are excluded).
-   *
-   * @param outgoing  edges leaving the module  (src inside → tgt outside)
-   * @param incoming  edges entering the module (src outside → tgt inside)
+   * Only edges where BOTH endpoints are known in meta are included.
    */
   def moduleEdges(graph: LoadedGraph, pathPrefix: String): ModuleResult = {
     val inside = graph.meta.collect { case (id, m) if m.file.contains(pathPrefix) => id }.toSet
@@ -123,45 +124,78 @@ object QueryEngine {
     ModuleResult(outgoing, incoming)
   }
 
-  private def bfsWithDepth(
-      start: String,
-      depth: Int,
-      edges: Map[String, Set[String]],
-      meta:  Map[String, NodeMeta],
-  ): Seq[DepthNode] = {
-    val visited = mutable.Map.empty[String, Int] // node -> hop count
+  // ---------------------------------------------------------------------------
+  // Private helpers
+  // ---------------------------------------------------------------------------
+
+  private def buildResult(
+      paths:     Seq[Seq[String]],
+      truncated: Boolean,
+      meta:      Map[String, NodeMeta],
+  ): GraphResult = {
+    val nodes = NodeSort.byLocation(paths.flatten.toSet, meta)
+    val edges = paths.flatMap(p => p.zip(p.tail)).distinct
+    GraphResult(nodes, edges, truncated)
+  }
+
+  /** BFS from `start` following `edges` up to `depth` hops; returns visited nodes (not `start`). */
+  private def bfsNodes(start: String, depth: Int, edges: Map[String, Set[String]]): Set[String] = {
+    if (depth <= 0) return Set.empty
+    val visited = mutable.Set.empty[String]
     val queue   = mutable.Queue.empty[(String, Int)]
 
-    if (depth <= 0) return Nil
-
     edges.getOrElse(start, Set.empty).foreach { n =>
-      visited(n) = 1
-      queue.enqueue((n, 1))
+      if (visited.add(n)) queue.enqueue((n, 1))
     }
 
     while (queue.nonEmpty) {
       val (node, hops) = queue.dequeue()
       if (hops < depth) {
         edges.getOrElse(node, Set.empty).foreach { next =>
-          if (!visited.contains(next)) {
-            visited(next) = hops + 1
-            queue.enqueue((next, hops + 1))
+          if (visited.add(next)) queue.enqueue((next, hops + 1))
+        }
+      }
+    }
+
+    visited.toSet
+  }
+
+  /** DFS from `from`; records a path whenever a node in `targets` is reached.
+   *  Stops at target nodes (does not recurse through them).
+   *  Returns (paths, truncated). */
+  private def collectPaths(
+      graph:    LoadedGraph,
+      from:     String,
+      targets:  Set[String],
+      maxDepth: Int,
+      maxPaths: Int,
+  ): (Seq[Seq[String]], Boolean) = {
+    val results = mutable.ListBuffer.empty[Seq[String]]
+    var done    = false
+
+    val path    = mutable.ArrayBuffer[String](from)
+    val visited = mutable.Set[String](from)
+
+    def dfs(node: String): Unit = {
+      if (done) return
+      for (next <- graph.out.getOrElse(node, Set.empty)) {
+        if (done) return
+        if (!visited(next)) {
+          if (targets(next)) {
+            results += path.toList :+ next
+            if (results.size >= maxPaths) { done = true; return }
+          } else if (path.size - 1 < maxDepth) {
+            path    += next
+            visited += next
+            dfs(next)
+            visited -= next
+            path.remove(path.size - 1)
           }
         }
       }
     }
 
-    visited.toSeq
-      .map { case (id, d) => DepthNode(id, d) }
-      .sortWith { (a, b) =>
-        if (a.depth != b.depth) a.depth < b.depth
-        else {
-          val fa = meta.get(a.id).map(_.file).getOrElse("")
-          val fb = meta.get(b.id).map(_.file).getOrElse("")
-          if (fa != fb) fa < fb
-          else meta.get(a.id).map(_.startLine).getOrElse(0) <
-               meta.get(b.id).map(_.startLine).getOrElse(0)
-        }
-      }
+    dfs(from)
+    (results.toSeq, done)
   }
 }

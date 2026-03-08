@@ -8,28 +8,15 @@ object DotOutput {
 
   def nextOutputFile(dir: Path): Path = OutputCounter.next(dir, ".dot")
 
-  def writeViaResult(
-      result:    Option[QueryEngine.ViaResult],
-      vertex:    String,
+  def writeGraphResult(
+      result:    QueryEngine.GraphResult,
+      title:     String,
       graph:     LoadedGraph,
       outFile:   Path,
       filterOut: Seq[Regex] = Nil,
   ): Path = {
-    val (nodes, edges) = viaNodesEdges(result, vertex, graph)
-    val title          = graph.meta.get(vertex).map(_.displayName).getOrElse(vertex)
-    val (fn, fe)       = applyFilter(nodes, edges, filterOut)
-    write(outFile, render(fn, fe, graph, s"graphVia: $title"))
-  }
-
-  def writePathResult(
-      result:    QueryEngine.PathResult,
-      graph:     LoadedGraph,
-      outFile:   Path,
-      filterOut: Seq[Regex] = Nil,
-  ): Path = {
-    val (nodes, edges) = pathNodesEdges(result)
-    val (fn, fe)       = applyFilter(nodes, edges, filterOut)
-    write(outFile, render(fn, fe, graph, "graphPath"))
+    val (fn, fe) = applyFilter(result.nodes.toSet, result.edges.toSet, filterOut)
+    write(outFile, render(fn, fe, graph, title))
   }
 
   private[graphexplorer] def applyFilter(
@@ -65,25 +52,6 @@ object DotOutput {
     val byGroup = sorted.groupBy(fqn => classFromFqn(fqn))
     GraphData(sorted, idOf, byGroup)
   }
-
-  /** Extract nodes and edges from a ViaResult for rendering. */
-  private[graphexplorer] def viaNodesEdges(
-      result: Option[QueryEngine.ViaResult],
-      vertex: String,
-      graph:  LoadedGraph,
-  ): (Set[String], Set[(String, String)]) = result match {
-    case None => (Set(vertex), Set.empty)
-    case Some(r) =>
-      val ns = Set(vertex) ++ r.in.map(_.id) ++ r.out.map(_.id)
-      val es = ns.flatMap(n => graph.out.getOrElse(n, Set.empty).collect { case t if ns(t) => n -> t })
-      (ns, es)
-  }
-
-  /** Extract nodes and edges from a PathResult for rendering. */
-  private[graphexplorer] def pathNodesEdges(
-      result: QueryEngine.PathResult,
-  ): (Set[String], Set[(String, String)]) =
-    (result.paths.flatten.toSet, result.paths.flatMap(p => p.zip(p.tail)).toSet)
 
   private[graphexplorer] def renderGraph(
     data:  GraphData,

@@ -6,30 +6,23 @@ import scala.util.matching.Regex
 
 object JsonOutput {
 
-  /** Returns the next available `dir/N.json` path using a shared counter with MermaidOutput. */
+  /** Returns the next available `dir/N.json` path. */
   def nextOutputFile(dir: Path): Path = OutputCounter.next(dir, ".json")
 
   def writePathResult(
-      result:       QueryEngine.PathResult,
-      from:         String,
-      to:           String,
+      result:       QueryEngine.GraphResult,
+      vertices:     Seq[String],
       compileError: Boolean,
       graph:        LoadedGraph,
       outFile:      Path,
       filterOut:    Seq[Regex] = Nil,
   ): Path = {
-    val filteredPaths = applyFilter(result.paths, filterOut)
-    val fields = Seq(
-      "query"     -> obj("from" -> str(from), "to" -> str(to)),
-      "found"     -> filteredPaths.nonEmpty.toString,
-      "truncated" -> result.truncated.toString,
-      "paths"     -> arr(filteredPaths.map(path => arr(path.map(nodeJson(_, graph))))),
-    ) ++ (if (compileError) Seq("compileError" -> "true") else Nil)
-    write(outFile, obj(fields: _*))
+    val queryJson = obj("vertices" -> arr(vertices.map(str)))
+    writeGraphResult(result, queryJson, compileError, graph, outFile, filterOut)
   }
 
   def writeViaResult(
-      result:       Option[QueryEngine.ViaResult],
+      result:       Option[QueryEngine.GraphResult],
       vertex:       String,
       depthIn:      Int,
       depthOut:     Int,
@@ -38,35 +31,19 @@ object JsonOutput {
       outFile:      Path,
       filterOut:    Seq[Regex] = Nil,
   ): Path = {
-    val hidden = (id: String) => filterOut.exists(_.findFirstIn(id).isDefined)
-    val (vertexJson, inArr, outArr) = result match {
-      case Some(r) =>
-        (
-          nodeJson(vertex, graph),
-          arr(r.in.filterNot(n => hidden(n.id)).map(n => depthNodeJson(n, graph))),
-          arr(r.out.filterNot(n => hidden(n.id)).map(n => depthNodeJson(n, graph)))
-        )
-      case None =>
-        ("null", "[]", "[]")
-    }
-    val fields = Seq(
-      "query"  -> obj("vertex" -> str(vertex), "depthIn" -> depthIn.toString, "depthOut" -> depthOut.toString),
-      "vertex" -> vertexJson,
-      "in"     -> inArr,
-      "out"    -> outArr,
-    ) ++ (if (compileError) Seq("compileError" -> "true") else Nil)
-    write(outFile, obj(fields: _*))
+    val queryJson = obj(
+      "vertex"   -> str(vertex),
+      "depthIn"  -> depthIn.toString,
+      "depthOut" -> depthOut.toString,
+    )
+    writeGraphResult(result.getOrElse(QueryEngine.GraphResult.empty), queryJson, compileError, graph, outFile, filterOut)
   }
 
-  private def applyFilter(paths: Seq[Seq[String]], filterOut: Seq[Regex]): Seq[Seq[String]] =
-    if (filterOut.isEmpty) paths
-    else paths.filterNot(path => path.exists(n => filterOut.exists(_.findFirstIn(n).isDefined)))
-
   def writeSearchResult(
-      matches:  Seq[String],
-      query:    String,
-      graph:    LoadedGraph,
-      outFile:  Path,
+      matches: Seq[String],
+      query:   String,
+      graph:   LoadedGraph,
+      outFile: Path,
   ): Path = {
     val fields = Seq(
       "query"   -> str(query),
@@ -93,11 +70,40 @@ object JsonOutput {
   }
 
   def writeIndex(graph: LoadedGraph, status: String, compileError: Boolean, outFile: Path): Path = {
-    // nodeCount = project-defined methods only; edgeCount includes edges to external symbols
     val fields = Seq(
       "status" -> str(status),
       "nodes"  -> graph.nodeCount.toString,
       "edges"  -> graph.edgeCount.toString,
+    ) ++ (if (compileError) Seq("compileError" -> "true") else Nil)
+    write(outFile, obj(fields: _*))
+  }
+
+  // ---------------------------------------------------------------------------
+  // Internal
+  // ---------------------------------------------------------------------------
+
+  private def writeGraphResult(
+      result:       QueryEngine.GraphResult,
+      queryJson:    String,
+      compileError: Boolean,
+      graph:        LoadedGraph,
+      outFile:      Path,
+      filterOut:    Seq[Regex],
+  ): Path = {
+    val hidden    = (id: String) => filterOut.exists(_.findFirstIn(id).isDefined)
+    val filtNodes = result.nodes.filterNot(hidden)
+    val filtSet   = filtNodes.toSet
+    val filtEdges = result.edges.filter { case (s, t) => filtSet(s) && filtSet(t) }
+
+    val nodesArr = arr(filtNodes.map(nodeJson(_, graph)))
+    val edgesArr = arr(filtEdges.map { case (s, t) => obj("s" -> str(s), "t" -> str(t)) })
+
+    val fields = Seq(
+      "query"     -> queryJson,
+      "found"     -> filtNodes.nonEmpty.toString,
+      "truncated" -> result.truncated.toString,
+      "nodes"     -> nodesArr,
+      "edges"     -> edgesArr,
     ) ++ (if (compileError) Seq("compileError" -> "true") else Nil)
     write(outFile, obj(fields: _*))
   }
@@ -116,9 +122,6 @@ object JsonOutput {
 
   private def nodeJson(id: String, graph: LoadedGraph): String =
     obj(metaFields(id, graph.meta.get(id)): _*)
-
-  private def depthNodeJson(node: QueryEngine.DepthNode, graph: LoadedGraph): String =
-    obj((metaFields(node.id, graph.meta.get(node.id)) :+ ("depth" -> node.depth.toString)): _*)
 
   private def str(s: String): String =
     "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n") + "\""

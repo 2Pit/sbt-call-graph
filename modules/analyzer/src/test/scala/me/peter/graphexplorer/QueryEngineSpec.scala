@@ -26,35 +26,39 @@ class QueryEngineSpec extends FunSuite {
   test("pathAtoB: finds a direct path") {
     val g = makeGraph(Seq("A" -> "B", "B" -> "C"))
     val r = QueryEngine.pathAtoB(g, "A", "C")
-    assertEquals(r.paths, Seq(Seq("A", "B", "C")))
+    assertEquals(r.nodes.toSet, Set("A", "B", "C"))
+    assertEquals(r.edges.toSet, Set("A" -> "B", "B" -> "C"))
     assertEquals(r.truncated, false)
   }
 
   test("pathAtoB: no path returns empty") {
     val g = makeGraph(Seq("A" -> "B"))
     val r = QueryEngine.pathAtoB(g, "B", "A")
-    assertEquals(r.paths, Seq.empty[Seq[String]])
+    assert(r.nodes.isEmpty)
+    assert(r.edges.isEmpty)
     assertEquals(r.truncated, false)
   }
 
-  test("pathAtoB: from == to returns single-node path") {
+  test("pathAtoB: from == to returns single-node result") {
     val g = makeGraph(Seq("A" -> "B"))
     val r = QueryEngine.pathAtoB(g, "A", "A")
-    assertEquals(r.paths, Seq(Seq("A")))
+    assertEquals(r.nodes, Seq("A"))
+    assert(r.edges.isEmpty)
   }
 
   test("pathAtoB: cycle does not cause infinite loop") {
     // A→B→A (cycle) and B→C
     val g = makeGraph(Seq("A" -> "B", "B" -> "A", "B" -> "C"))
     val r = QueryEngine.pathAtoB(g, "A", "C")
-    assertEquals(r.paths, Seq(Seq("A", "B", "C")))
+    assertEquals(r.nodes.toSet, Set("A", "B", "C"))
+    assertEquals(r.edges.toSet, Set("A" -> "B", "B" -> "C"))
   }
 
   test("pathAtoB: finds multiple paths, truncated when maxPaths exceeded") {
     // diamond: A→B→D and A→C→D — two paths
     val g = makeGraph(Seq("A" -> "B", "A" -> "C", "B" -> "D", "C" -> "D"))
     val r = QueryEngine.pathAtoB(g, "A", "D", maxPaths = 1)
-    assertEquals(r.paths.size, 1)
+    assertEquals(r.nodes.size, 3) // A + one of {B,C} + D
     assertEquals(r.truncated, true)
   }
 
@@ -62,12 +66,50 @@ class QueryEngineSpec extends FunSuite {
     // A→B→C→D→E; maxDepth=2 stops expansion at C, so E is never reached
     val g = makeGraph(Seq("A" -> "B", "B" -> "C", "C" -> "D", "D" -> "E"))
     val r = QueryEngine.pathAtoB(g, "A", "E", maxDepth = 2)
-    assertEquals(r.paths, Seq.empty[Seq[String]])
+    assert(r.nodes.isEmpty)
   }
 
   test("pathAtoB: unknown from-vertex returns empty") {
     val g = makeGraph(Seq("A" -> "B"))
-    assertEquals(QueryEngine.pathAtoB(g, "X", "B").paths, Seq.empty[Seq[String]])
+    assert(QueryEngine.pathAtoB(g, "X", "B").nodes.isEmpty)
+  }
+
+  // ---------------------------------------------------------------------------
+  // pathsAmong
+  // ---------------------------------------------------------------------------
+
+  test("pathsAmong: two vertices — same as pathAtoB") {
+    val g = makeGraph(Seq("A" -> "B", "B" -> "C"))
+    val r = QueryEngine.pathsAmong(g, Seq("A", "C"))
+    assertEquals(r.nodes.toSet, Set("A", "B", "C"))
+    assertEquals(r.edges.toSet, Set("A" -> "B", "B" -> "C"))
+  }
+
+  test("pathsAmong: three vertices along a chain") {
+    val g = makeGraph(Seq("A" -> "B", "B" -> "C"))
+    val r = QueryEngine.pathsAmong(g, Seq("A", "B", "C"))
+    assertEquals(r.nodes.toSet, Set("A", "B", "C"))
+    assert(r.edges.toSet.contains("A" -> "B"))
+    assert(r.edges.toSet.contains("B" -> "C"))
+  }
+
+  test("pathsAmong: single vertex returns just that vertex") {
+    val g = makeGraph(Seq("A" -> "B"))
+    val r = QueryEngine.pathsAmong(g, Seq("A"))
+    assertEquals(r.nodes, Seq("A"))
+    assert(r.edges.isEmpty)
+  }
+
+  test("pathsAmong: no paths between disconnected vertices returns empty") {
+    val g = makeGraph(Seq("A" -> "B", "C" -> "D"))
+    val r = QueryEngine.pathsAmong(g, Seq("B", "C")) // no path B→C
+    assert(r.nodes.isEmpty)
+  }
+
+  test("pathsAmong: unknown vertices are skipped") {
+    val g = makeGraph(Seq("A" -> "B", "B" -> "C"))
+    val r = QueryEngine.pathsAmong(g, Seq("A", "X", "C")) // X not in graph
+    assertEquals(r.nodes.toSet, Set("A", "B", "C"))
   }
 
   // ---------------------------------------------------------------------------
@@ -77,29 +119,28 @@ class QueryEngineSpec extends FunSuite {
   test("viaVertex: direct callers and callees at depth 1") {
     val g = makeGraph(Seq("A" -> "B", "C" -> "B", "B" -> "D"))
     val r = QueryEngine.viaVertex(g, "B", depthIn = 1, depthOut = 1).get
-    assertEquals(r.in.map(_.id).toSet, Set("A", "C"))
-    assertEquals(r.out.map(_.id).toSet, Set("D"))
+    assertEquals(r.nodes.toSet, Set("A", "B", "C", "D"))
+    assertEquals(r.edges.toSet, Set("A" -> "B", "C" -> "B", "B" -> "D"))
   }
 
   test("viaVertex: depthIn and depthOut are independent") {
     // chain A→B→C→D; queried vertex = B
     val g = makeGraph(Seq("A" -> "B", "B" -> "C", "C" -> "D"))
     val r = QueryEngine.viaVertex(g, "B", depthIn = 1, depthOut = 2).get
-    assertEquals(r.in.map(_.id).toSet, Set("A"))
-    assertEquals(r.out.map(_.id).toSet, Set("C", "D"))
-  }
-
-  test("viaVertex: depth values on returned nodes are correct") {
-    val g = makeGraph(Seq("A" -> "B", "B" -> "C", "C" -> "D"))
-    val r = QueryEngine.viaVertex(g, "B", depthIn = 2, depthOut = 2).get
-    assertEquals(r.out.find(_.id == "C").map(_.depth), Some(1))
-    assertEquals(r.out.find(_.id == "D").map(_.depth), Some(2))
+    assertEquals(r.nodes.toSet, Set("A", "B", "C", "D"))
   }
 
   test("viaVertex: depthOut=1 does not expose 2-hop callees") {
     val g = makeGraph(Seq("A" -> "B", "B" -> "C", "C" -> "D"))
     val r = QueryEngine.viaVertex(g, "B", depthIn = 1, depthOut = 1).get
-    assert(!r.out.map(_.id).contains("D"))
+    assert(!r.nodes.contains("D"))
+  }
+
+  test("viaVertex: depthOut=0 omits all callees") {
+    val g = makeGraph(Seq("A" -> "B", "B" -> "C"))
+    val r = QueryEngine.viaVertex(g, "B", depthIn = 1, depthOut = 0).get
+    assertEquals(r.nodes.toSet, Set("A", "B"))
+    assertEquals(r.edges.toSet, Set("A" -> "B"))
   }
 
   test("viaVertex: unknown vertex returns None") {
@@ -107,57 +148,41 @@ class QueryEngineSpec extends FunSuite {
     assertEquals(QueryEngine.viaVertex(g, "X"), None)
   }
 
-  // ---------------------------------------------------------------------------
-  // viaVertex: strict directionality — BFS never mixes in/out edges
-  // ---------------------------------------------------------------------------
-
-  test("viaVertex: out-only reachable node does not appear in in-set") {
-    // B→C: C is a callee (out); it must NOT appear as a caller (in)
+  test("viaVertex: in-traversal does not include out-only nodes") {
+    // B→C: C should not appear when depthOut=0
     val g = makeGraph(Seq("A" -> "B", "B" -> "C"))
-    val r = QueryEngine.viaVertex(g, "B", depthIn = 2, depthOut = 2).get
-    assert(!r.in.map(_.id).contains("C"), "C is a callee, must not appear in callers")
+    val r = QueryEngine.viaVertex(g, "B", depthIn = 2, depthOut = 0).get
+    assertEquals(r.nodes.toSet, Set("A", "B"))
   }
 
-  test("viaVertex: in-only reachable node does not appear in out-set") {
-    // A→B: A is a caller (in); it must NOT appear as a callee (out)
+  test("viaVertex: out-traversal does not include in-only nodes") {
+    // A→B: A should not appear when depthIn=0
     val g = makeGraph(Seq("A" -> "B", "B" -> "C"))
-    val r = QueryEngine.viaVertex(g, "B", depthIn = 2, depthOut = 2).get
-    assert(!r.out.map(_.id).contains("A"), "A is a caller, must not appear in callees")
+    val r = QueryEngine.viaVertex(g, "B", depthIn = 0, depthOut = 2).get
+    assertEquals(r.nodes.toSet, Set("B", "C"))
   }
 
-  test("viaVertex: depthOut=0 returns empty out-set") {
-    val g = makeGraph(Seq("A" -> "B", "B" -> "C"))
-    val r = QueryEngine.viaVertex(g, "B", depthIn = 1, depthOut = 0).get
-    assertEquals(r.out, Seq.empty[QueryEngine.DepthNode])
-  }
-
-  test("viaVertex: in-traversal does not follow out-edges from intermediate nodes") {
-    // Graph: X→A→B→C; queried vertex = B
-    // in-traversal should reach A (depth 1) and X (depth 2)
-    // C is only reachable via B's out-edge — must NOT appear in in-set
-    val g = makeGraph(Seq("X" -> "A", "A" -> "B", "B" -> "C"))
-    val r = QueryEngine.viaVertex(g, "B", depthIn = 3, depthOut = 0).get
-    assertEquals(r.in.map(_.id).toSet, Set("A", "X"))
-    assert(!r.in.map(_.id).contains("C"), "C is only reachable via out-edge, must not appear in in-set")
-    assertEquals(r.out, Seq.empty[QueryEngine.DepthNode], "depthOut=0 must produce empty out-set")
-  }
-
-  test("viaVertex: out-traversal does not follow in-edges from intermediate nodes") {
-    // Graph: X→B→C, A→C; queried vertex = B
-    // out-traversal should reach C (depth 1)
-    // A is only reachable by following C's in-edge — must NOT appear in out-set
-    val g = makeGraph(Seq("X" -> "B", "B" -> "C", "A" -> "C"))
-    val r = QueryEngine.viaVertex(g, "B", depthIn = 1, depthOut = 3).get
-    assertEquals(r.out.map(_.id).toSet, Set("C"))
-    assert(!r.out.map(_.id).contains("A"), "A reaches C via in-edge, must not appear in out-set")
-  }
-
-  test("viaVertex: mutual call — node in both in and out sets independently") {
-    // A↔B (A→B and B→A); queried vertex = A
+  test("viaVertex: mutual call — both directions present in result") {
     val g = makeGraph(Seq("A" -> "B", "B" -> "A"))
     val r = QueryEngine.viaVertex(g, "A", depthIn = 1, depthOut = 1).get
-    assert(r.in.map(_.id).contains("B"),  "B calls A, so it should appear in in-set")
-    assert(r.out.map(_.id).contains("B"), "A calls B, so it should appear in out-set")
+    assertEquals(r.nodes.toSet, Set("A", "B"))
+    assertEquals(r.edges.toSet, Set("A" -> "B", "B" -> "A"))
+  }
+
+  test("viaVertex: in-traversal follows in-edges only (not out-edges of intermediates)") {
+    // Graph: X→A→B→C; vertex=B; depthIn=3, depthOut=0
+    // in-traversal should reach A and X, not C
+    val g = makeGraph(Seq("X" -> "A", "A" -> "B", "B" -> "C"))
+    val r = QueryEngine.viaVertex(g, "B", depthIn = 3, depthOut = 0).get
+    assertEquals(r.nodes.toSet, Set("A", "B", "X"))
+  }
+
+  test("viaVertex: out-traversal follows out-edges only (not in-edges of intermediates)") {
+    // Graph: X→B→C, A→C; vertex=B; depthIn=0, depthOut=3
+    // out-traversal should reach C; A (which calls C) should NOT appear
+    val g = makeGraph(Seq("X" -> "B", "B" -> "C", "A" -> "C"))
+    val r = QueryEngine.viaVertex(g, "B", depthIn = 0, depthOut = 3).get
+    assertEquals(r.nodes.toSet, Set("B", "C"))
   }
 
   // ---------------------------------------------------------------------------

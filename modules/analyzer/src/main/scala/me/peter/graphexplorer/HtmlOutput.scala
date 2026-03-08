@@ -7,28 +7,15 @@ object HtmlOutput {
 
   def nextOutputFile(dir: Path): Path = OutputCounter.next(dir, ".html")
 
-  def writeViaResult(
-      result:    Option[QueryEngine.ViaResult],
-      vertex:    String,
+  def writeGraphResult(
+      result:    QueryEngine.GraphResult,
+      title:     String,
       graph:     LoadedGraph,
       outFile:   Path,
       filterOut: Seq[Regex] = Nil,
   ): Path = {
-    val (nodes, edges) = DotOutput.viaNodesEdges(result, vertex, graph)
-    val title          = graph.meta.get(vertex).map(_.displayName).getOrElse(vertex)
-    val (fn, fe)       = DotOutput.applyFilter(nodes, edges, filterOut)
-    DotOutput.write(outFile, render(fn, fe, graph, s"graphVia: $title"))
-  }
-
-  def writePathResult(
-      result:    QueryEngine.PathResult,
-      graph:     LoadedGraph,
-      outFile:   Path,
-      filterOut: Seq[Regex] = Nil,
-  ): Path = {
-    val (nodes, edges) = DotOutput.pathNodesEdges(result)
-    val (fn, fe)       = DotOutput.applyFilter(nodes, edges, filterOut)
-    DotOutput.write(outFile, render(fn, fe, graph, "graphPath"))
+    val (fn, fe) = DotOutput.applyFilter(result.nodes.toSet, result.edges.toSet, filterOut)
+    DotOutput.write(outFile, render(fn, fe, graph, title))
   }
 
   private val palette = Array(

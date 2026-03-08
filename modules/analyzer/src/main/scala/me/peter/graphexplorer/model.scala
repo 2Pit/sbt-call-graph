@@ -22,6 +22,17 @@ object LoadedGraph {
   val empty: LoadedGraph = LoadedGraph(Map.empty, Map.empty, Map.empty)
 }
 
+/** Result of a graph traversal query (paths or neighbourhood). */
+final case class GraphResult(
+    nodes:     Seq[String],           // sorted by (file, startLine)
+    edges:     Seq[(String, String)], // (caller, callee) pairs
+    truncated: Boolean = false,
+)
+
+object GraphResult {
+  val empty: GraphResult = GraphResult(Nil, Nil)
+}
+
 /** Sort a collection of node FQNs by source location (file asc, startLine asc). */
 private[graphexplorer] object NodeSort {
   def byLocation(ids: Iterable[String], meta: Map[String, NodeMeta]): Seq[String] =

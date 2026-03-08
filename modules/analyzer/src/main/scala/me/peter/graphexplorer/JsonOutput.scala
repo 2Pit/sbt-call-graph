@@ -10,7 +10,7 @@ object JsonOutput {
   def nextOutputFile(dir: Path): Path = OutputCounter.next(dir, ".json")
 
   def writePathResult(
-      result:       QueryEngine.GraphResult,
+      result:       GraphResult,
       vertices:     Seq[String],
       compileError: Boolean,
       graph:        LoadedGraph,
@@ -22,7 +22,7 @@ object JsonOutput {
   }
 
   def writeViaResult(
-      result:       Option[QueryEngine.GraphResult],
+      result:       Option[GraphResult],
       vertex:       String,
       depthIn:      Int,
       depthOut:     Int,
@@ -36,7 +36,7 @@ object JsonOutput {
       "depthIn"  -> depthIn.toString,
       "depthOut" -> depthOut.toString,
     )
-    writeGraphResult(result.getOrElse(QueryEngine.GraphResult.empty), queryJson, compileError, graph, outFile, filterOut)
+    writeGraphResult(result.getOrElse(GraphResult.empty), queryJson, compileError, graph, outFile, filterOut)
   }
 
   def writeSearchResult(
@@ -54,12 +54,12 @@ object JsonOutput {
   }
 
   def writeModuleResult(
-      result:  QueryEngine.ModuleResult,
+      result:  ModuleResult,
       prefix:  String,
       graph:   LoadedGraph,
       outFile: Path,
   ): Path = {
-    def edgeJson(e: QueryEngine.ModuleEdge): String =
+    def edgeJson(e: ModuleEdge): String =
       obj("from" -> nodeJson(e.srcId, graph), "to" -> nodeJson(e.tgtId, graph))
     val fields = Seq(
       "query"    -> obj("prefix" -> str(prefix)),
@@ -83,7 +83,7 @@ object JsonOutput {
   // ---------------------------------------------------------------------------
 
   private def writeGraphResult(
-      result:       QueryEngine.GraphResult,
+      result:       GraphResult,
       queryJson:    String,
       compileError: Boolean,
       graph:        LoadedGraph,

@@ -7,7 +7,7 @@ object MermaidOutput {
   def nextOutputFile(dir: Path): Path = OutputCounter.next(dir, ".md")
 
   def writeGraphResult(
-      result:  QueryEngine.GraphResult,
+      result:  GraphResult,
       graph:   LoadedGraph,
       outFile: Path,
   ): Path =

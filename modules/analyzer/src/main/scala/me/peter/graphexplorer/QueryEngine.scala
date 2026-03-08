@@ -4,36 +4,6 @@ import scala.collection.mutable
 
 object QueryEngine {
 
-  /** Universal result type for path and neighbourhood queries. */
-  final case class GraphResult(
-      nodes:     Seq[String],             // sorted by (file, startLine)
-      edges:     Seq[(String, String)],   // (caller, callee) pairs
-      truncated: Boolean = false,
-  )
-
-  object GraphResult {
-    val empty: GraphResult = GraphResult(Nil, Nil)
-  }
-
-  /**
-   * Find simple paths from `from` to `to` in the call graph using DFS.
-   * Returns a GraphResult: union of all path nodes and consecutive path edges.
-   */
-  def pathAtoB(
-      graph:    LoadedGraph,
-      from:     String,
-      to:       String,
-      maxDepth: Int = 20,
-      maxPaths: Int = 100,
-  ): GraphResult = {
-    if (!graph.meta.contains(from)) return GraphResult.empty
-    if (!graph.meta.contains(to))   return GraphResult.empty
-    if (from == to) return GraphResult(Seq(from), Nil)
-
-    val (paths, truncated) = collectPaths(graph, from, Set(to), maxDepth, maxPaths)
-    buildResult(paths, truncated, graph.meta)
-  }
-
   /**
    * Find paths among a set of vertices.
    * For each prefix pair (v_i, remaining v[i+1..]), finds all directed paths from v_i to
@@ -94,35 +64,6 @@ object QueryEngine {
       graph.meta.collect { case (id, m) if m.displayName.contains(query) || id.contains(query) => id },
       graph.meta,
     ).take(maxResults)
-
-  final case class ModuleEdge(srcId: String, tgtId: String)
-  final case class ModuleResult(outgoing: Seq[ModuleEdge], incoming: Seq[ModuleEdge])
-
-  /**
-   * Return all call-graph edges that cross the boundary of a module identified by `pathPrefix`.
-   * Only edges where BOTH endpoints are known in meta are included.
-   */
-  def moduleEdges(graph: LoadedGraph, pathPrefix: String): ModuleResult = {
-    val inside = graph.meta.collect { case (id, m) if m.file.contains(pathPrefix) => id }.toSet
-
-    val outgoing = (for {
-      src <- inside.toSeq
-      tgt <- graph.out.getOrElse(src, Set.empty).toSeq
-      if !inside(tgt) && graph.meta.contains(tgt)
-    } yield ModuleEdge(src, tgt))
-      .sortBy(e => graph.meta.get(e.srcId).map(m => (m.file, m.startLine)).getOrElse(("", 0)))
-      .distinct
-
-    val incoming = (for {
-      tgt <- inside.toSeq
-      src <- graph.in.getOrElse(tgt, Set.empty).toSeq
-      if !inside(src) && graph.meta.contains(src)
-    } yield ModuleEdge(src, tgt))
-      .sortBy(e => graph.meta.get(e.tgtId).map(m => (m.file, m.startLine)).getOrElse(("", 0)))
-      .distinct
-
-    ModuleResult(outgoing, incoming)
-  }
 
   // ---------------------------------------------------------------------------
   // Private helpers

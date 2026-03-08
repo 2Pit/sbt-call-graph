@@ -20,69 +20,22 @@ class QueryEngineSpec extends FunSuite {
   }
 
   // ---------------------------------------------------------------------------
-  // pathAtoB
-  // ---------------------------------------------------------------------------
-
-  test("pathAtoB: finds a direct path") {
-    val g = makeGraph(Seq("A" -> "B", "B" -> "C"))
-    val r = QueryEngine.pathAtoB(g, "A", "C")
-    assertEquals(r.nodes.toSet, Set("A", "B", "C"))
-    assertEquals(r.edges.toSet, Set("A" -> "B", "B" -> "C"))
-    assertEquals(r.truncated, false)
-  }
-
-  test("pathAtoB: no path returns empty") {
-    val g = makeGraph(Seq("A" -> "B"))
-    val r = QueryEngine.pathAtoB(g, "B", "A")
-    assert(r.nodes.isEmpty)
-    assert(r.edges.isEmpty)
-    assertEquals(r.truncated, false)
-  }
-
-  test("pathAtoB: from == to returns single-node result") {
-    val g = makeGraph(Seq("A" -> "B"))
-    val r = QueryEngine.pathAtoB(g, "A", "A")
-    assertEquals(r.nodes, Seq("A"))
-    assert(r.edges.isEmpty)
-  }
-
-  test("pathAtoB: cycle does not cause infinite loop") {
-    // A→B→A (cycle) and B→C
-    val g = makeGraph(Seq("A" -> "B", "B" -> "A", "B" -> "C"))
-    val r = QueryEngine.pathAtoB(g, "A", "C")
-    assertEquals(r.nodes.toSet, Set("A", "B", "C"))
-    assertEquals(r.edges.toSet, Set("A" -> "B", "B" -> "C"))
-  }
-
-  test("pathAtoB: finds multiple paths, truncated when maxPaths exceeded") {
-    // diamond: A→B→D and A→C→D — two paths
-    val g = makeGraph(Seq("A" -> "B", "A" -> "C", "B" -> "D", "C" -> "D"))
-    val r = QueryEngine.pathAtoB(g, "A", "D", maxPaths = 1)
-    assertEquals(r.nodes.size, 3) // A + one of {B,C} + D
-    assertEquals(r.truncated, true)
-  }
-
-  test("pathAtoB: maxDepth prevents reaching distant target") {
-    // A→B→C→D→E; maxDepth=2 stops expansion at C, so E is never reached
-    val g = makeGraph(Seq("A" -> "B", "B" -> "C", "C" -> "D", "D" -> "E"))
-    val r = QueryEngine.pathAtoB(g, "A", "E", maxDepth = 2)
-    assert(r.nodes.isEmpty)
-  }
-
-  test("pathAtoB: unknown from-vertex returns empty") {
-    val g = makeGraph(Seq("A" -> "B"))
-    assert(QueryEngine.pathAtoB(g, "X", "B").nodes.isEmpty)
-  }
-
-  // ---------------------------------------------------------------------------
   // pathsAmong
   // ---------------------------------------------------------------------------
 
-  test("pathsAmong: two vertices — same as pathAtoB") {
+  test("pathsAmong: finds a direct path between two vertices") {
     val g = makeGraph(Seq("A" -> "B", "B" -> "C"))
     val r = QueryEngine.pathsAmong(g, Seq("A", "C"))
     assertEquals(r.nodes.toSet, Set("A", "B", "C"))
     assertEquals(r.edges.toSet, Set("A" -> "B", "B" -> "C"))
+    assertEquals(r.truncated, false)
+  }
+
+  test("pathsAmong: no path returns empty") {
+    val g = makeGraph(Seq("A" -> "B"))
+    val r = QueryEngine.pathsAmong(g, Seq("B", "A"))
+    assert(r.nodes.isEmpty)
+    assert(r.edges.isEmpty)
   }
 
   test("pathsAmong: three vertices along a chain") {
@@ -102,14 +55,35 @@ class QueryEngineSpec extends FunSuite {
 
   test("pathsAmong: no paths between disconnected vertices returns empty") {
     val g = makeGraph(Seq("A" -> "B", "C" -> "D"))
-    val r = QueryEngine.pathsAmong(g, Seq("B", "C")) // no path B→C
+    val r = QueryEngine.pathsAmong(g, Seq("B", "C"))
     assert(r.nodes.isEmpty)
   }
 
   test("pathsAmong: unknown vertices are skipped") {
     val g = makeGraph(Seq("A" -> "B", "B" -> "C"))
-    val r = QueryEngine.pathsAmong(g, Seq("A", "X", "C")) // X not in graph
+    val r = QueryEngine.pathsAmong(g, Seq("A", "X", "C"))
     assertEquals(r.nodes.toSet, Set("A", "B", "C"))
+  }
+
+  test("pathsAmong: cycle does not cause infinite loop") {
+    val g = makeGraph(Seq("A" -> "B", "B" -> "A", "B" -> "C"))
+    val r = QueryEngine.pathsAmong(g, Seq("A", "C"))
+    assertEquals(r.nodes.toSet, Set("A", "B", "C"))
+    assertEquals(r.edges.toSet, Set("A" -> "B", "B" -> "C"))
+  }
+
+  test("pathsAmong: truncated when maxPaths exceeded") {
+    // diamond: A→B→D and A→C→D — two paths
+    val g = makeGraph(Seq("A" -> "B", "A" -> "C", "B" -> "D", "C" -> "D"))
+    val r = QueryEngine.pathsAmong(g, Seq("A", "D"), maxPaths = 1)
+    assertEquals(r.nodes.size, 3) // A + one of {B,C} + D
+    assertEquals(r.truncated, true)
+  }
+
+  test("pathsAmong: maxDepth prevents reaching distant target") {
+    val g = makeGraph(Seq("A" -> "B", "B" -> "C", "C" -> "D", "D" -> "E"))
+    val r = QueryEngine.pathsAmong(g, Seq("A", "E"), maxDepth = 2)
+    assert(r.nodes.isEmpty)
   }
 
   // ---------------------------------------------------------------------------
@@ -227,9 +201,9 @@ class QueryEngineSpec extends FunSuite {
       "other/B#bar()." -> NodeMeta("other/B.scala", 1, 5, "bar"),
     )
     val g = makeGraph(Seq("mod/A#foo()." -> "other/B#bar()."), meta)
-    val r = QueryEngine.moduleEdges(g, "mod/")
+    val r = ModuleQuery.moduleEdges(g, "mod/")
     assertEquals(r.outgoing.map(e => (e.srcId, e.tgtId)), Seq("mod/A#foo()." -> "other/B#bar()."))
-    assertEquals(r.incoming, Seq.empty[QueryEngine.ModuleEdge])
+    assertEquals(r.incoming, Seq.empty[ModuleEdge])
   }
 
   test("moduleEdges: incoming — call from outside to inside") {
@@ -238,9 +212,9 @@ class QueryEngineSpec extends FunSuite {
       "other/B#bar()." -> NodeMeta("other/B.scala", 1, 5, "bar"),
     )
     val g = makeGraph(Seq("other/B#bar()." -> "mod/A#foo()."), meta)
-    val r = QueryEngine.moduleEdges(g, "mod/")
+    val r = ModuleQuery.moduleEdges(g, "mod/")
     assertEquals(r.incoming.map(e => (e.srcId, e.tgtId)), Seq("other/B#bar()." -> "mod/A#foo()."))
-    assertEquals(r.outgoing, Seq.empty[QueryEngine.ModuleEdge])
+    assertEquals(r.outgoing, Seq.empty[ModuleEdge])
   }
 
   test("moduleEdges: internal edge not reported") {
@@ -249,9 +223,9 @@ class QueryEngineSpec extends FunSuite {
       "mod/A#bar()." -> NodeMeta("mod/A.scala", 7, 10, "bar"),
     )
     val g = makeGraph(Seq("mod/A#foo()." -> "mod/A#bar()."), meta)
-    val r = QueryEngine.moduleEdges(g, "mod/")
-    assertEquals(r.outgoing, Seq.empty[QueryEngine.ModuleEdge])
-    assertEquals(r.incoming, Seq.empty[QueryEngine.ModuleEdge])
+    val r = ModuleQuery.moduleEdges(g, "mod/")
+    assertEquals(r.outgoing, Seq.empty[ModuleEdge])
+    assertEquals(r.incoming, Seq.empty[ModuleEdge])
   }
 
   test("moduleEdges: callee not in meta is excluded") {
@@ -263,7 +237,7 @@ class QueryEngineSpec extends FunSuite {
       in   = Map(libId -> Set(fooId)),
       meta = Map(fooId -> NodeMeta("mod/A.scala", 1, 5, "foo")),
     )
-    val r = QueryEngine.moduleEdges(g, "mod/")
-    assertEquals(r.outgoing, Seq.empty[QueryEngine.ModuleEdge])
+    val r = ModuleQuery.moduleEdges(g, "mod/")
+    assertEquals(r.outgoing, Seq.empty[ModuleEdge])
   }
 }

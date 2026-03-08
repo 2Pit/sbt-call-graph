@@ -38,7 +38,6 @@ object GraphExplorerPlugin extends AutoPlugin {
       (current +: deps).distinct.map(_.toPath)
     },
     graphPath := {
-      // --- SBT task dependencies (macro evaluates these before the task body) ---
       val args          = spaceDelimited("<args>").parsed
       val compileResult = (Compile / compile).result.value
       val roots         = graphSemanticdbRoots.value
@@ -47,7 +46,6 @@ object GraphExplorerPlugin extends AutoPlugin {
       val analysisFile  = (Compile / compileAnalysisFile).value
       val log           = streams.value.log
 
-      // --- Task body ---
       val positional = args.filterNot(_.startsWith("--"))
       if (positional.length < 2)
         sys.error("Usage: graphPath <v1> <v2> [<v3>...] [--maxDepth N] [--maxPaths N] [--format md|html]")
@@ -57,30 +55,25 @@ object GraphExplorerPlugin extends AutoPlugin {
       val filterOut    = flagRegexes(args, "--filterOut")
       val compileError = compileResult.isInstanceOf[Inc]
 
-      val t0    = System.currentTimeMillis()
-      val stamp = compileStamp(analysisFile)
-      val graph = CallGraphState.getOrLoad(roots, sourceRoot, stamp)
-      val t1    = System.currentTimeMillis()
-
-      val result = QueryEngine.pathsAmong(graph, positional, maxDepth, maxPaths)
-      val t2     = System.currentTimeMillis()
-
-      val written = format match {
-        case "md"   => MermaidOutput.writeGraphResult(result, graph, MermaidOutput.nextOutputFile(graphDir))
-        case "html" => HtmlOutput.writeGraphResult(result, "graphPath", graph, HtmlOutput.nextOutputFile(graphDir), filterOut)
-        case "dot"  => DotOutput.writeGraphResult(result, "graphPath", graph, DotOutput.nextOutputFile(graphDir), filterOut)
-        case _      => JsonOutput.writePathResult(result, positional, compileError, graph, JsonOutput.nextOutputFile(graphDir), filterOut)
+      val (graph, tLoad) = timed {
+        CallGraphState.getOrLoad(roots, sourceRoot, compileStamp(analysisFile))
       }
-      val t3 = System.currentTimeMillis()
+      val (result, tQuery) = timed {
+        QueryEngine.pathsAmong(graph, positional, maxDepth, maxPaths)
+      }
+      val (written, tOut) = timed {
+        format match {
+          case "md"   => MermaidOutput.writeGraphResult(result, graph, MermaidOutput.nextOutputFile(graphDir))
+          case "html" => HtmlOutput.writeGraphResult(result, "graphPath", graph, HtmlOutput.nextOutputFile(graphDir), filterOut)
+          case "dot"  => DotOutput.writeGraphResult(result, "graphPath", graph, DotOutput.nextOutputFile(graphDir), filterOut)
+          case _      => JsonOutput.writePathResult(result, positional, compileError, graph, JsonOutput.nextOutputFile(graphDir), filterOut)
+        }
+      }
 
-      log.info(f"[graph] graph load  ${t1 - t0}%5d ms  (nodes=${graph.nodeCount}, edges=${graph.edgeCount})")
-      log.info(f"[graph] query       ${t2 - t1}%5d ms  (nodes=${result.nodes.size})")
-      log.info(f"[graph] output      ${t3 - t2}%5d ms")
-      log.info(f"[graph] total       ${t3 - t0}%5d ms")
+      log.debug(f"[graph] load ${tLoad}%5d ms  query ${tQuery}%5d ms  output ${tOut}%5d ms  total ${tLoad + tQuery + tOut}%5d ms  (nodes=${graph.nodeCount}, edges=${graph.edgeCount})")
       log.info(written.toAbsolutePath.toString)
     },
     graphVia := {
-      // --- SBT task dependencies ---
       val args          = spaceDelimited("<args>").parsed
       val compileResult = (Compile / compile).result.value
       val roots         = graphSemanticdbRoots.value
@@ -89,7 +82,6 @@ object GraphExplorerPlugin extends AutoPlugin {
       val analysisFile  = (Compile / compileAnalysisFile).value
       val log           = streams.value.log
 
-      // --- Task body ---
       if (args.isEmpty)
         sys.error("Usage: graphVia <vertex> [--depth N] [--depthIn N] [--depthOut N] [--format md|html]")
       val vertex       = args(0)
@@ -100,32 +92,27 @@ object GraphExplorerPlugin extends AutoPlugin {
       val filterOut    = flagRegexes(args, "--filterOut")
       val compileError = compileResult.isInstanceOf[Inc]
 
-      val t0    = System.currentTimeMillis()
-      val stamp = compileStamp(analysisFile)
-      val graph = CallGraphState.getOrLoad(roots, sourceRoot, stamp)
-      val t1    = System.currentTimeMillis()
-
-      val result = QueryEngine.viaVertex(graph, vertex, depthIn, depthOut)
-      val t2     = System.currentTimeMillis()
-
-      val title   = graph.meta.get(vertex).map(_.displayName).getOrElse(vertex)
-      val gr      = result.getOrElse(QueryEngine.GraphResult.empty)
-      val written = format match {
-        case "md"   => MermaidOutput.writeGraphResult(gr, graph, MermaidOutput.nextOutputFile(graphDir))
-        case "html" => HtmlOutput.writeGraphResult(gr, s"graphVia: $title", graph, HtmlOutput.nextOutputFile(graphDir), filterOut)
-        case "dot"  => DotOutput.writeGraphResult(gr, s"graphVia: $title", graph, DotOutput.nextOutputFile(graphDir), filterOut)
-        case _      => JsonOutput.writeViaResult(result, vertex, depthIn, depthOut, compileError, graph, JsonOutput.nextOutputFile(graphDir), filterOut)
+      val (graph, tLoad) = timed {
+        CallGraphState.getOrLoad(roots, sourceRoot, compileStamp(analysisFile))
       }
-      val t3 = System.currentTimeMillis()
+      val (result, tQuery) = timed {
+        QueryEngine.viaVertex(graph, vertex, depthIn, depthOut)
+      }
+      val title = graph.meta.get(vertex).map(_.displayName).getOrElse(vertex)
+      val gr    = result.getOrElse(GraphResult.empty)
+      val (written, tOut) = timed {
+        format match {
+          case "md"   => MermaidOutput.writeGraphResult(gr, graph, MermaidOutput.nextOutputFile(graphDir))
+          case "html" => HtmlOutput.writeGraphResult(gr, s"graphVia: $title", graph, HtmlOutput.nextOutputFile(graphDir), filterOut)
+          case "dot"  => DotOutput.writeGraphResult(gr, s"graphVia: $title", graph, DotOutput.nextOutputFile(graphDir), filterOut)
+          case _      => JsonOutput.writeViaResult(result, vertex, depthIn, depthOut, compileError, graph, JsonOutput.nextOutputFile(graphDir), filterOut)
+        }
+      }
 
-      log.info(f"[graph] graph load  ${t1 - t0}%5d ms  (nodes=${graph.nodeCount}, edges=${graph.edgeCount})")
-      log.info(f"[graph] query       ${t2 - t1}%5d ms  (nodes=${gr.nodes.size})")
-      log.info(f"[graph] output      ${t3 - t2}%5d ms")
-      log.info(f"[graph] total       ${t3 - t0}%5d ms")
+      log.debug(f"[graph] load ${tLoad}%5d ms  query ${tQuery}%5d ms  output ${tOut}%5d ms  total ${tLoad + tQuery + tOut}%5d ms  (nodes=${gr.nodes.size})")
       log.info(written.toAbsolutePath.toString)
     },
     graphSearch := {
-      // --- SBT task dependencies ---
       val args         = spaceDelimited("<args>").parsed
       val roots        = graphSemanticdbRoots.value
       val sourceRoot   = Some((ThisBuild / baseDirectory).value.toPath)
@@ -133,26 +120,23 @@ object GraphExplorerPlugin extends AutoPlugin {
       val analysisFile = (Compile / compileAnalysisFile).value
       val log          = streams.value.log
 
-      // --- Task body ---
       if (args.isEmpty) sys.error("Usage: graphSearch <substring> [--maxResults N]")
       val query      = args(0)
       val maxResults = flagInt(args, "--maxResults", 200)
 
-      val t0      = System.currentTimeMillis()
-      val stamp   = compileStamp(analysisFile)
-      val graph   = CallGraphState.getOrLoad(roots, sourceRoot, stamp)
-      val t1      = System.currentTimeMillis()
-      val matches = QueryEngine.search(graph, query, maxResults)
-      val written = JsonOutput.writeSearchResult(matches, query, graph, JsonOutput.nextOutputFile(graphDir))
-      val t2      = System.currentTimeMillis()
+      val (graph, tLoad) = timed {
+        CallGraphState.getOrLoad(roots, sourceRoot, compileStamp(analysisFile))
+      }
+      val ((matches, written), tRest) = timed {
+        val m = QueryEngine.search(graph, query, maxResults)
+        val w = JsonOutput.writeSearchResult(m, query, graph, JsonOutput.nextOutputFile(graphDir))
+        (m, w)
+      }
 
-      log.info(f"[graph] graph load  ${t1 - t0}%5d ms  (nodes=${graph.nodeCount}, edges=${graph.edgeCount})")
-      log.info(f"[graph] query+out   ${t2 - t1}%5d ms  (matches=${matches.size})")
-      log.info(f"[graph] total       ${t2 - t0}%5d ms")
+      log.debug(f"[graph] load ${tLoad}%5d ms  query+out ${tRest}%5d ms  total ${tLoad + tRest}%5d ms  (matches=${matches.size})")
       log.info(written.toAbsolutePath.toString)
     },
     graphModule := {
-      // --- SBT task dependencies ---
       val args         = spaceDelimited("<args>").parsed
       val roots        = graphSemanticdbRoots.value
       val sourceRoot   = Some((ThisBuild / baseDirectory).value.toPath)
@@ -160,25 +144,22 @@ object GraphExplorerPlugin extends AutoPlugin {
       val analysisFile = (Compile / compileAnalysisFile).value
       val log          = streams.value.log
 
-      // --- Task body ---
       if (args.isEmpty) sys.error("Usage: graphModule <path-prefix>")
       val prefix = args(0)
 
-      val t0      = System.currentTimeMillis()
-      val stamp   = compileStamp(analysisFile)
-      val graph   = CallGraphState.getOrLoad(roots, sourceRoot, stamp)
-      val t1      = System.currentTimeMillis()
-      val result  = QueryEngine.moduleEdges(graph, prefix)
-      val written = JsonOutput.writeModuleResult(result, prefix, graph, JsonOutput.nextOutputFile(graphDir))
-      val t2      = System.currentTimeMillis()
+      val (graph, tLoad) = timed {
+        CallGraphState.getOrLoad(roots, sourceRoot, compileStamp(analysisFile))
+      }
+      val ((result, written), tRest) = timed {
+        val r = ModuleQuery.moduleEdges(graph, prefix)
+        val w = JsonOutput.writeModuleResult(r, prefix, graph, JsonOutput.nextOutputFile(graphDir))
+        (r, w)
+      }
 
-      log.info(f"[graph] graph load  ${t1 - t0}%5d ms  (nodes=${graph.nodeCount}, edges=${graph.edgeCount})")
-      log.info(f"[graph] query+out   ${t2 - t1}%5d ms  (out=${result.outgoing.size}, in=${result.incoming.size})")
-      log.info(f"[graph] total       ${t2 - t0}%5d ms")
+      log.debug(f"[graph] load ${tLoad}%5d ms  query+out ${tRest}%5d ms  total ${tLoad + tRest}%5d ms  (out=${result.outgoing.size}, in=${result.incoming.size})")
       log.info(written.toAbsolutePath.toString)
     },
     graphIndex := {
-      // --- SBT task dependencies ---
       val compileResult = (Compile / compile).result.value
       val roots         = graphSemanticdbRoots.value
       val sourceRoot    = Some((ThisBuild / baseDirectory).value.toPath)
@@ -186,23 +167,26 @@ object GraphExplorerPlugin extends AutoPlugin {
       val analysisFile  = (Compile / compileAnalysisFile).value
       val log           = streams.value.log
 
-      // --- Task body ---
       val compileError = compileResult.isInstanceOf[Inc]
 
-      val t0      = System.currentTimeMillis()
-      val stamp   = compileStamp(analysisFile)
-      val graph   = CallGraphState.getOrLoad(roots, sourceRoot, stamp)
-      val t1      = System.currentTimeMillis()
-      val status  = s"loaded at ${new java.util.Date()}"
-      val written = JsonOutput.writeIndex(graph, status, compileError, JsonOutput.nextOutputFile(graphDir))
-      val t2      = System.currentTimeMillis()
+      val (graph, tLoad) = timed {
+        CallGraphState.getOrLoad(roots, sourceRoot, compileStamp(analysisFile))
+      }
+      val (written, tOut) = timed {
+        val status = s"loaded at ${new java.util.Date()}"
+        JsonOutput.writeIndex(graph, status, compileError, JsonOutput.nextOutputFile(graphDir))
+      }
 
-      log.info(f"[graph] graph load  ${t1 - t0}%5d ms  (nodes=${graph.nodeCount}, edges=${graph.edgeCount})")
-      log.info(f"[graph] output      ${t2 - t1}%5d ms")
-      log.info(f"[graph] total       ${t2 - t0}%5d ms")
+      log.debug(f"[graph] load ${tLoad}%5d ms  output ${tOut}%5d ms  total ${tLoad + tOut}%5d ms  (nodes=${graph.nodeCount}, edges=${graph.edgeCount})")
       log.info(written.toAbsolutePath.toString)
     },
   )
+
+  private def timed[T](f: => T): (T, Long) = {
+    val t0     = System.currentTimeMillis()
+    val result = f
+    (result, System.currentTimeMillis() - t0)
+  }
 
   private def flagInt(args: Seq[String], flag: String, default: Int): Int = {
     val idx = args.indexOf(flag)
@@ -223,10 +207,6 @@ object GraphExplorerPlugin extends AutoPlugin {
     else Nil
   }
 
-  /** A single stat() call on SBT's incremental-analysis file.
-   *  The file is updated after every successful compile, so its mtime is a reliable
-   *  proxy for "has a new compile happened?" — no need to walk all .semanticdb files.
-   */
   private def compileStamp(analysisFile: java.io.File): Long =
     if (analysisFile.exists()) analysisFile.lastModified() else 0L
 }

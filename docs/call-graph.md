@@ -11,20 +11,20 @@ The plugin loads SemanticDB from **all modules** (`srs-study-ws`, `srs-common`, 
 **User mentions a single method or class**
 → Run `graphVia` to see what calls it and what it calls.
 > "Why is `SessionLive#close` sometimes not invoked?"
-> → `graphVia sreo/session/SessionLive#close().` shows who is responsible for calling it.
+> → `graphVia sreo/session/SessionLive#close().` shows the neighbourhood of that method.
 
 **User mentions multiple methods or asks about data/control flow**
-→ Run `graphPath` to find how one method reaches another.
+→ Run `graphPath` to find how methods reach each other. Accepts 2 or more vertices — paths are found between all pairs.
 > "How does the API request get to the database?"
 > → `graphPath sreo/ws/RoutesLive#sessionRoute(). sreo/session/SessionRepository#close().`
 
 **User wants to refactor or split a component**
-→ Run `graphVia` on each candidate method. The size of `in` (fan-in) shows how many callers depend on it; `out` (fan-out) shows how much it owns.
+→ Run `graphVia` on each candidate method. The number of edges pointing in (fan-in) shows how many callers depend on it; edges pointing out (fan-out) show how much it owns.
 
 **Module structure is unknown**
 → Run `graphIndex` for scale (node/edge counts), then `graphVia` on the entry point.
 
-**FQN is unknown / `vertex: null` was returned**
+**FQN is unknown / vertex was not found**
 → Run `graphSearch` with a class or method name substring to find the correct FQN.
 > `graphSearch ScheduleRepositoryLive` returns all matching vertices with their IDs.
 
@@ -78,20 +78,41 @@ studyWs/graphVia sreo/session/SessionLive#close(). --depth 4
 # path between two methods
 studyWs/graphPath sreo/session/SessionLive#closeOnResult(). sreo/session/SessionLive#closeSession().
 
-# path with custom limits
-studyWs/graphPath A B --maxDepth 15 --maxPaths 50
+# path among 3+ methods (finds paths between all pairs)
+studyWs/graphPath A B C --maxDepth 15 --maxPaths 50
 
 # cross-module coupling: all call edges crossing a module boundary
 studyWs/graphModule db/db-learning
 studyWs/graphModule db/db-reporting
 ```
 
+### Output formats
+
+All query commands (`graphPath`, `graphVia`) support `--format`:
+
+```
+studyWs/graphVia sreo/session/SessionLive#close(). --format html
+studyWs/graphPath A B --format md
+```
+
+| Format   | Flag             | Description                              |
+|----------|------------------|------------------------------------------|
+| JSON     | (default)        | Machine-readable nodes + edges           |
+| HTML     | `--format html`  | Interactive graph with pan/zoom/collapse  |
+| Markdown | `--format md`    | Mermaid flowchart for embedding in docs   |
+| DOT      | `--format dot`   | Graphviz DOT for external rendering       |
+
+### Filtering
+
+Use `--filterOut` to exclude nodes matching regex patterns (comma-separated):
+
+```
+studyWs/graphVia sreo/session/SessionLive#close(). --filterOut "sreo/db/.*,sreo/tkl/.*"
+```
+
 Each command triggers incremental compilation automatically before querying.
 
-**Important:** pipe through `tail -5` to suppress sbt log noise — only the result file path matters:
-```sh
-cd blank-slate-server && sbtn "studyWs/graphVia sreo/session/SessionLive#close()." 2>&1 | tail -5
-```
+**Important:** the result file path is printed to stdout (last line). Timing diagnostics are only visible at debug log level (`set logLevel := Level.Debug`).
 
 ---
 
@@ -102,9 +123,10 @@ If the project fails to compile, the plugin **still runs the query** against the
 ```json
 {
   "query":        { "vertex": "...", "depthIn": 2, "depthOut": 2 },
-  "vertex":       { ... },
-  "in":           [ ... ],
-  "out":          [ ... ],
+  "found":        true,
+  "truncated":    false,
+  "nodes":        [ ... ],
+  "edges":        [ ... ],
   "compileError": true
 }
 ```
@@ -115,21 +137,36 @@ If the project fails to compile, the plugin **still runs the query** against the
 
 Result file: `blank-slate-server/srs-study-ws/target/call-graph/N.json` (N increments each call, never overwritten)
 
-### graphVia response
+### Unified output format (graphVia / graphPath)
+
+Both `graphVia` and `graphPath` return the same structure — a flat list of nodes and edges:
 
 ```json
 {
-  "query":  { "vertex": "sreo/session/SessionLive#close().", "depthIn": 2, "depthOut": 2 },
-  "vertex": { "id": "...", "displayName": "close", "file": "srs-study-ws/.../SessionLive.scala", "startLine": 105, "endLine": 110 },
-  "in":  [ { "id": "...", "displayName": "closeOnResult", "file": "...", "startLine": 113, "endLine": 120, "depth": 1 }, ... ],
-  "out": [ { "id": "...", "displayName": "closeSession",  "file": "...", "startLine": 92,  "endLine": 98,  "depth": 1 }, ... ]
+  "query":     { "vertex": "sreo/session/SessionLive#close().", "depthIn": 2, "depthOut": 2 },
+  "found":     true,
+  "truncated": false,
+  "nodes": [
+    { "id": "sreo/session/SessionLive#close().", "displayName": "close", "file": "srs-study-ws/.../SessionLive.scala", "startLine": 105, "endLine": 110 },
+    { "id": "sreo/session/SessionLive#closeSession().", "displayName": "closeSession", "file": "...", "startLine": 92, "endLine": 98 },
+    ...
+  ],
+  "edges": [
+    { "s": "sreo/session/SessionLive#close().", "t": "sreo/session/SessionLive#closeSession()." },
+    ...
+  ]
 }
 ```
 
-- `in` — methods that call the queried vertex (callers), sorted by `(depth, file, startLine)`
-- `out` — methods the queried vertex calls (callees), same sort order
-- `depth` on each node = number of hops from the queried vertex
-- `"vertex": null` means the FQN was not found in the graph
+- `nodes` — all vertices in the result subgraph, sorted by `(file, startLine)`
+- `edges` — directed call edges between nodes (`s` calls `t`)
+- `found` — `true` if any nodes were returned
+- `truncated` — `true` if `--maxPaths` limit was hit (graphPath only)
+
+For `graphPath`, the query field contains `"vertices"` instead of `"vertex"`:
+```json
+{ "query": { "vertices": ["A", "B", "C"] }, ... }
+```
 
 **To read a specific method's source:**
 ```
@@ -173,21 +210,6 @@ Use the `id` from a match as the vertex argument in `graphVia` or `graphPath`.
 - `incoming` — calls entering the module (what calls into this module from outside)
 - Only edges where both endpoints are known in the graph are included (stdlib/library calls excluded)
 
-### graphPath response
-
-```json
-{
-  "query":     { "from": "...", "to": "..." },
-  "found":     true,
-  "truncated": false,
-  "paths": [
-    [ { "id": "...", "displayName": "...", ... }, ... ]
-  ]
-}
-```
-
-Each path is an ordered list of nodes — read them in sequence to follow the call chain. `"found": false` means no path exists within `--maxDepth`. `"truncated": true` means `--maxPaths` was hit; use `--maxPaths` to raise the limit.
-
 ---
 
 ## Limitations
@@ -197,3 +219,4 @@ Each path is an ordered list of nodes — read them in sequence to follow the ca
 - **`val` fields** appear as nodes with `endLine == startLine`
 - **Implicit conversions and for-comprehension** may be partially missing
 - **DFS path order** — `graphPath` results are not sorted by length
+- **`pathsAmong` direction** — paths are searched from earlier vertices to later ones in the argument list (forward direction only); reverse paths require swapping the order

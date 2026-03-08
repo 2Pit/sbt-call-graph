@@ -64,7 +64,7 @@ object Main {
       case "path" :: from :: to :: _ =>
         val maxDepth = flagInt(rest, "--maxDepth", 20)
         val maxPaths = flagInt(rest, "--maxPaths", 100)
-        val result   = QueryEngine.pathAtoB(graph, from, to, maxDepth, maxPaths)
+        val result   = QueryEngine.pathsAmong(graph, Seq(from, to), maxDepth, maxPaths)
         val outFile  = JsonOutput.nextOutputFile(semanticdbDir.getParent.resolve("call-graph"))
         val written  = JsonOutput.writePathResult(result, Seq(from, to), compileError = false, graph, outFile)
         println(written.toAbsolutePath.toString)
@@ -86,7 +86,7 @@ object Main {
         println(written.toAbsolutePath.toString)
 
       case "module" :: prefix :: _ =>
-        val result  = QueryEngine.moduleEdges(graph, prefix)
+        val result  = ModuleQuery.moduleEdges(graph, prefix)
         val outFile = JsonOutput.nextOutputFile(semanticdbDir.getParent.resolve("call-graph"))
         val written = JsonOutput.writeModuleResult(result, prefix, graph, outFile)
         println(written.toAbsolutePath.toString)

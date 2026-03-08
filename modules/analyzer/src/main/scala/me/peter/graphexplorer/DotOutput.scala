@@ -9,7 +9,7 @@ object DotOutput {
   def nextOutputFile(dir: Path): Path = OutputCounter.next(dir, ".dot")
 
   def writeGraphResult(
-      result:    QueryEngine.GraphResult,
+      result:    GraphResult,
       title:     String,
       graph:     LoadedGraph,
       outFile:   Path,

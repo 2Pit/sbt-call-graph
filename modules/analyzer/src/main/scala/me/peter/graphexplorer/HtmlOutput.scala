@@ -8,7 +8,7 @@ object HtmlOutput {
   def nextOutputFile(dir: Path): Path = OutputCounter.next(dir, ".html")
 
   def writeGraphResult(
-      result:    QueryEngine.GraphResult,
+      result:    GraphResult,
       title:     String,
       graph:     LoadedGraph,
       outFile:   Path,

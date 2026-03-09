@@ -14,7 +14,7 @@ sbt-graph-exporter/
     plugins.sbt                      <- sbt-scalafmt
   modules/
     analyzer/                        <- standalone Scala 2.12 library (core)
-      src/main/scala/me/peter/graphexplorer/
+      src/main/scala/io/github/twopit/graphexplorer/
         model.scala                  <- NodeMeta, LoadedGraph, GraphResult
         GraphLoader.scala            <- SemanticDB -> (out, in, meta) maps
         QueryEngine.scala            <- pathAtoB / pathsAmong / viaVertex
@@ -64,7 +64,7 @@ sbtn "analyzer/run demo graph-demo.html"
 
 - **SemanticDB as data source** — `.semanticdb` files are generated during `compile` by `semanticdb-scalac`. No additional plugins required beyond what scalafix already provides.
 - **Edge extraction** — via `SymbolOccurrence.Role.REFERENCE` on `Kind.METHOD` in `.semanticdb` (no AST walk over `Term.Apply`). The caller is the nearest method definition above by line number.
-- **Vertex FQN** — SemanticDB format, e.g.: `me/peter/graphexplorer/GraphLoader.load(+1).`
+- **Vertex FQN** — SemanticDB format, e.g.: `io/github/twopit/graphexplorer/GraphLoader.load(+1).`
 - **startLine** — 0-based internally (as stored in SemanticDB protobuf); 1-based in JSON output.
 - **endLine** — parsed separately from `.scala` source via scalameta; falls back to startLine if source is unavailable.
 - **Caching** — three-level cache in GraphLoader (protobuf docs, scalameta endLines, per-file contributions); mtime-based invalidation via `compileAnalysisFile`.

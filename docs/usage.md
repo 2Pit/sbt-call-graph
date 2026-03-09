@@ -11,7 +11,7 @@ SBT plugin for building a call graph of a Scala project and navigating it via `s
 `project/plugins.sbt`:
 
 ```scala
-addSbtPlugin("me.peter" % "sbt-graph-explorer" % "<version>")
+addSbtPlugin("io.github.2pit" % "sbt-graph-explorer" % "<version>")
 ```
 
 `build.sbt` — enable on the module you want to analyze:

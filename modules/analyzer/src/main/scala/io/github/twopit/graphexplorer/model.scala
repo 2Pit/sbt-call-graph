@@ -1,4 +1,4 @@
-package me.peter.graphexplorer
+package io.github.twopit.graphexplorer
 
 /** Metadata for a single graph vertex (method). */
 final case class NodeMeta(

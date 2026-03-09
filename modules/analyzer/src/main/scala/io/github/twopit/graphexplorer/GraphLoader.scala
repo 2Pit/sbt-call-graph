@@ -1,4 +1,4 @@
-package me.peter.graphexplorer
+package io.github.twopit.graphexplorer
 
 import scala.meta._
 import scala.meta.internal.semanticdb._

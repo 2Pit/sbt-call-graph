@@ -8,7 +8,7 @@ val graphCheck = taskKey[Unit]("Assert expected call-graph edges from compiled s
 graphCheck := {
   val _ = (Compile / compile).value
   val roots = graphSemanticdbRoots.value
-  val graph = me.peter.graphexplorer.GraphLoader.load(roots)
+  val graph = io.github.twopit.graphexplorer.GraphLoader.load(roots)
 
   def assertEdge(from: String, to: String): Unit =
     if (!graph.out.getOrElse(from, Set.empty).contains(to))

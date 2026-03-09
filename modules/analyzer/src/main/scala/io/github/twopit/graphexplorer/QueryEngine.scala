@@ -1,4 +1,4 @@
-package me.peter.graphexplorer
+package io.github.twopit.graphexplorer
 
 import scala.collection.mutable
 

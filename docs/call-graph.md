@@ -162,15 +162,22 @@ Both `graphVia` and `graphPath` return the same structure — a flat list of nod
 - `edges` — directed call edges between nodes (`s` calls `t`)
 - `found` — `true` if any nodes were returned
 - `truncated` — `true` if `--maxPaths` limit was hit (graphPath only)
+- `readHints` — source file ranges to read, grouped by file; ranges within 10 lines of each other are merged
 
 For `graphPath`, the query field contains `"vertices"` instead of `"vertex"`:
 ```json
 { "query": { "vertices": ["A", "B", "C"] }, ... }
 ```
 
-**To read a specific method's source:**
+**To read relevant source**, use `readHints` instead of reading each node individually:
+```json
+"readHints": [
+  { "file": "srs-study-ws/.../SessionLive.scala",
+    "ranges": [ {"start": 92, "end": 120}, {"start": 145, "end": 160} ] }
+]
 ```
-Read("blank-slate-server/" + node.file, offset = node.startLine - 1, limit = node.endLine - node.startLine + 1)
+```
+Read("blank-slate-server/" + hint.file, offset = range.start - 1, limit = range.end - range.start + 1)
 ```
 
 ### graphSearch response

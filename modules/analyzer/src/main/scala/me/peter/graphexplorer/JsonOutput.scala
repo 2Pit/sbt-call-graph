@@ -98,12 +98,15 @@ object JsonOutput {
     val nodesArr = arr(filtNodes.map(nodeJson(_, graph)))
     val edgesArr = arr(filtEdges.map { case (s, t) => obj("s" -> str(s), "t" -> str(t)) })
 
+    val hintsArr = readHintsJson(filtNodes, graph.meta)
+
     val fields = Seq(
       "query"     -> queryJson,
       "found"     -> filtNodes.nonEmpty.toString,
       "truncated" -> result.truncated.toString,
       "nodes"     -> nodesArr,
       "edges"     -> edgesArr,
+      "readHints" -> hintsArr,
     ) ++ (if (compileError) Seq("compileError" -> "true") else Nil)
     write(outFile, obj(fields: _*))
   }
@@ -122,6 +125,30 @@ object JsonOutput {
 
   private def nodeJson(id: String, graph: LoadedGraph): String =
     obj(metaFields(id, graph.meta.get(id)): _*)
+
+  /** Group nodes by file, merge ranges with gap < 10 lines, output 1-based. */
+  private def readHintsJson(nodeIds: Seq[String], meta: Map[String, NodeMeta]): String = {
+    val byFile = nodeIds
+      .flatMap(id => meta.get(id).map(m => m.file -> (m.startLine, m.endLine)))
+      .groupBy(_._1)
+      .toSeq.sortBy(_._1)
+
+    val hints = byFile.map { case (file, pairs) =>
+      val sorted = pairs.map(_._2).sortBy(_._1)
+      val merged = sorted.foldLeft(List.empty[(Int, Int)]) {
+        case (Nil, range) => List(range)
+        case (head :: tail, (s, e)) =>
+          if (s - head._2 <= 10) (head._1, math.max(head._2, e)) :: tail
+          else (s, e) :: head :: tail
+      }.reverse
+
+      val rangesArr = arr(merged.map { case (s, e) =>
+        obj("start" -> (s + 1).toString, "end" -> (e + 1).toString)
+      })
+      obj("file" -> str(file), "ranges" -> rangesArr)
+    }
+    arr(hints)
+  }
 
   private def str(s: String): String =
     "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n") + "\""

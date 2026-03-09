@@ -1,16 +1,16 @@
-addCommandAlias("pub", "analyzer/publishLocal; plugin/publishLocal")
+addCommandAlias("pub", """set ThisBuild / version := "0.1.0-SNAPSHOT"; analyzer/publishLocal; plugin/publishLocal""")
 addCommandAlias(
   "selfVia",
   "analyzer/graphVia io/github/twopit/graphexplorer/CallGraphState.main(). --format html --depthOut 10 --depthIn 1"
 )
 
 ThisBuild / organization := "io.github.2pit"
-ThisBuild / version      := "0.1.0-SNAPSHOT"
 ThisBuild / scalaVersion := "2.12.20"
 
 // scalameta 4.x is published for both 2.12 and 2.13
 lazy val analyzer = project
   .in(file("modules/analyzer"))
+  .enablePlugins(GraphExplorerPlugin)
   .settings(
     name              := "graph-explorer-analyzer",
     semanticdbEnabled := true,

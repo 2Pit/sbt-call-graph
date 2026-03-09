@@ -96,7 +96,7 @@ object JsonOutput {
     val filtEdges = result.edges.filter { case (s, t) => filtSet(s) && filtSet(t) }
 
     val nodesArr = arr(filtNodes.map(nodeJson(_, graph)))
-    val edgesArr = arr(filtEdges.map { case (s, t) => obj("s" -> str(s), "t" -> str(t)) })
+    val edgesArr = arr(filtEdges.map { case (s, t) => obj("from" -> str(s), "to" -> str(t)) })
 
     val hintsArr = readHintsJson(filtNodes, graph.meta)
 

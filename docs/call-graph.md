@@ -152,14 +152,14 @@ Both `graphVia` and `graphPath` return the same structure — a flat list of nod
     ...
   ],
   "edges": [
-    { "s": "sreo/session/SessionLive#close().", "t": "sreo/session/SessionLive#closeSession()." },
+    { "from": "sreo/session/SessionLive#close().", "to": "sreo/session/SessionLive#closeSession()." },
     ...
   ]
 }
 ```
 
 - `nodes` — all vertices in the result subgraph, sorted by `(file, startLine)`
-- `edges` — directed call edges between nodes (`s` calls `t`)
+- `edges` — directed call edges between nodes (`from` calls `to`)
 - `found` — `true` if any nodes were returned
 - `truncated` — `true` if `--maxPaths` limit was hit (graphPath only)
 - `readHints` — source file ranges to read, grouped by file; ranges within 10 lines of each other are merged

@@ -194,10 +194,10 @@ class HtmlOutputSpec extends FunSuite {
     assert(simpleHtml.contains("const edges"), "const edges missing")
   }
 
-  test("edges contains s and t fields") {
+  test("edges contains from and to fields") {
     val e = jsConst(simpleHtml, "edges")
-    assert(e.contains("\"s\""), s"edges 's' field missing: $e")
-    assert(e.contains("\"t\""), s"edges 't' field missing: $e")
+    assert(e.contains("\"from\""), s"edges 'from' field missing: $e")
+    assert(e.contains("\"to\""),   s"edges 'to' field missing: $e")
   }
 
   test("edges is non-empty for a graph with edges") {

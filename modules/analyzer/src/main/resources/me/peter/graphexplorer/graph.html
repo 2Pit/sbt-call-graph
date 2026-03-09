@@ -69,18 +69,18 @@ function computeVisible() {
 
   // Edges that are active: source not hidden and not suppressed outgoing
   const activeEdges = edges.filter(e =>
-    !explicitlyHidden(e.s) && !collapsedOutgoing.has(e.s) && !explicitlyHidden(e.t)
+    !explicitlyHidden(e.from) && !collapsedOutgoing.has(e.from) && !explicitlyHidden(e.to)
   );
 
   // Which nodes have *any* incoming edge in the non-hidden graph (before outgoing suppression)
   const hasOriginalIn = new Set();
   edges.forEach(e => {
-    if (!explicitlyHidden(e.s) && !explicitlyHidden(e.t)) hasOriginalIn.add(e.t);
+    if (!explicitlyHidden(e.from) && !explicitlyHidden(e.to)) hasOriginalIn.add(e.to);
   });
 
   // Which nodes have an active incoming edge
   const hasActiveIn = new Set();
-  activeEdges.forEach(e => hasActiveIn.add(e.t));
+  activeEdges.forEach(e => hasActiveIn.add(e.to));
 
   const visible = id => {
     if (explicitlyHidden(id)) return false;
@@ -126,10 +126,10 @@ function buildDot() {
 
   const seen = new Set();
   activeEdges.forEach(e => {
-    if (!visible(e.s) || !visible(e.t)) return;
-    const sfn = nodeFile[e.s], tfn = nodeFile[e.t];
-    const ns = (sfn && collapsedSet.has(sfn)) ? groupId[sfn] : e.s;
-    const nt = (tfn && collapsedSet.has(tfn)) ? groupId[tfn] : e.t;
+    if (!visible(e.from) || !visible(e.to)) return;
+    const sfn = nodeFile[e.from], tfn = nodeFile[e.to];
+    const ns = (sfn && collapsedSet.has(sfn)) ? groupId[sfn] : e.from;
+    const nt = (tfn && collapsedSet.has(tfn)) ? groupId[tfn] : e.to;
     if (ns === nt) return;
     const key = ns + '\x00' + nt;
     if (seen.has(key)) return;
@@ -204,7 +204,7 @@ function applyVisibilityToDom(svgEl) {
 function addNodePanel(nodeEl, svgEl, id, isCluster) {
   const ns         = 'http://www.w3.org/2000/svg';
   const bbox       = nodeEl.getBBox();
-  const hasToggle  = isCluster || edges.some(e => e.s === id);
+  const hasToggle  = isCluster || edges.some(e => e.from === id);
   const panelW     = hasToggle ? 26 : 13;
   const panelH     = 13;
   const px         = bbox.x;

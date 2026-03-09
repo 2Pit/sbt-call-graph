@@ -51,7 +51,7 @@ object HtmlOutput {
     }
     val edgeEntries = edges.toSeq.flatMap { case (from, to) =>
       for (fid <- data.idOf.get(from); tid <- data.idOf.get(to)) yield
-        s"""{"s":${DotOutput.dq(fid)},"t":${DotOutput.dq(tid)}}"""
+        s"""{"from":${DotOutput.dq(fid)},"to":${DotOutput.dq(tid)}}"""
     }
 
     val metaJson  = metaEntries.mkString("{", ",\n", "}")

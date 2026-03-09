@@ -1,6 +1,6 @@
 # CLAUDE.md — sbt-graph-explorer
 
-SBT-плагин + standalone analyzer для построения и обхода call graph Scala-проекта через SemanticDB.
+SBT plugin + standalone analyzer for building and querying call graphs of Scala projects via SemanticDB.
 
 ---
 
@@ -8,94 +8,81 @@ SBT-плагин + standalone analyzer для построения и обход
 
 ```
 sbt-graph-exporter/
-  build.sbt                          ← корневой build (2 модуля: analyzer, plugin)
+  build.sbt                          <- root build (2 modules: analyzer, plugin)
   project/
-    build.properties                 ← sbtn 1.10.7
-    plugins.sbt                      ← sbt-scalafmt
+    build.properties                 <- sbt 1.10.7
+    plugins.sbt                      <- sbt-scalafmt
   modules/
-    analyzer/                        ← standalone Scala 2.13 app (ядро)
+    analyzer/                        <- standalone Scala 2.12 library (core)
       src/main/scala/me/peter/graphexplorer/
-        model.scala                  ← NodeMeta, LoadedGraph
-        GraphLoader.scala            ← SemanticDB → (out, in, meta) maps
-        QueryEngine.scala            ← BFS pathAtoB / viaVertex
-        CallGraphState.scala         ← @volatile var + mtime-инвалидация
-        JsonOutput.scala             ← сериализация результата в JSON
-        Main.scala                   ← CLI: stats / path / via
-      src/test/scala/                ← юнит-тесты (MUnit/ScalaTest)
-    plugin/                          ← SBT-плагин Scala 2.12 (pending)
+        model.scala                  <- NodeMeta, LoadedGraph, GraphResult
+        GraphLoader.scala            <- SemanticDB -> (out, in, meta) maps
+        QueryEngine.scala            <- pathAtoB / pathsAmong / viaVertex
+        CallGraphState.scala         <- @volatile var + mtime invalidation
+        JsonOutput.scala             <- JSON serialization with readHints
+        DotOutput.scala              <- Graphviz DOT output
+        HtmlOutput.scala             <- interactive HTML graph (viz.js)
+        MermaidOutput.scala          <- Mermaid flowchart output
+        Main.scala                   <- CLI: stats / path / via / demo
+      src/test/scala/                <- unit tests (MUnit)
+    plugin/                          <- SBT plugin Scala 2.12
       src/main/scala/
-        GraphExplorerPlugin.scala    ← AutoPlugin с тасками graphPath/graphVia/graphIndex
+        GraphExplorerPlugin.scala    <- AutoPlugin with graphPath/graphVia/graphSearch/graphModule/graphIndex tasks
       src/sbt-test/
-        graph-explorer/basic/        ← scripted test
+        graph-explorer/basic/        <- scripted test
   docs/
-    spec.md                          ← требования и архитектура
-    plan.md                          ← план реализации с чекбоксами
+    call-graph.md                    <- Claude Skill guide (usage reference)
+    spec.md                          <- original requirements and architecture
+    plan.md                          <- implementation plan with status
+    usage.md                         <- user-facing usage guide
 ```
 
 ---
 
 ## Build & Run
 
-**Scala версии:** `analyzer` — Scala 2.13.18; `plugin` — Scala 2.12.20 (требование SBT).
-
-Целевой проект: `blank-slate-server`, модуль `srs-study-ws`.
-SemanticDB директория: `/Users/b_petr/IdeaProjects/blank-slate/blank-slate-server/srs-study-ws/target/scala-2.13/meta`
-
 ```sh
-# компиляция всего
+# compile everything
 sbtn compile
 
-# stats — кол-во вершин/рёбер, топ калеры:
-sbtn "analyzer/run /Users/b_petr/IdeaProjects/blank-slate/blank-slate-server/srs-study-ws/target/scala-2.13/meta"
-
-# найти вызывающих/вызываемых конкретного метода:
-sbtn "analyzer/run /Users/b_petr/IdeaProjects/blank-slate/blank-slate-server/srs-study-ws/target/scala-2.13/meta via sreo/session/SessionLive#close()."
-
-# найти путь между двумя методами:
-sbtn "analyzer/run /Users/b_petr/IdeaProjects/blank-slate/blank-slate-server/srs-study-ws/target/scala-2.13/meta path sreo/session/SessionLive#close(). sreo/study/StudyServiceLive#submit()."
-
-# тесты analyzer:
+# run tests
 sbtn "analyzer/test"
 
-# публикация обоих модулей локально:
+# publish both modules locally
 sbtn "analyzer/publishLocal; plugin/publishLocal"
 
-# scripted тесты плагина (публикует analyzer сначала, затем запускает):
+# scripted tests (publishes analyzer first)
 sbtn "analyzer/publishLocal; plugin/scripted"
-```
 
-**FQN-формат** (SemanticDB): `sreo/session/SessionLive#close().` — пакет через `/`, класс через `#`, метод с `().` на конце.
+# standalone CLI (demo HTML graph)
+sbtn "analyzer/run demo graph-demo.html"
+```
 
 ---
 
 ## Key Design Decisions
 
-- **SemanticDB как источник данных** — `.semanticdb` генерируются при `compile` через `semanticdb-scalac` (уже включён через sbt-scalafix в целевом проекте). Никаких дополнительных плагинов.
-- **Извлечение рёбер** — через `SymbolOccurrence.Role.REFERENCE` на `Kind.METHOD` в `.semanticdb` (без AST-обхода `Term.Apply`). Caller определяется как ближайший method definition выше по строке.
-- **FQN вершин** — SemanticDB-формат, например: `me/peter/graphexplorer/GraphLoader.load(+1).`
-- **startLine** — 0-based (как в SemanticDB protobuf).
-- **endLine** — парсится отдельно из `.scala` исходника через scalameta; `None` если источник недоступен.
-- **Кэш** — `@volatile var` + `synchronized` на запись + mtime-инвалидация по директории `.semanticdb`.
-- **Вывод** — пишет JSON в `target/graph-last-result.json`; в stdout печатается путь к файлу (надёжнее чем stdout в SBT из-за `[info]`-префиксов).
-- **`analyzer` и `plugin` не связаны через `dependsOn`** — несовместимые версии Scala (2.13 vs 2.12). Взаимодействие через внешний процесс или jar-вызов — решается при реализации плагина (Шаг 6).
+- **SemanticDB as data source** — `.semanticdb` files are generated during `compile` by `semanticdb-scalac`. No additional plugins required beyond what scalafix already provides.
+- **Edge extraction** — via `SymbolOccurrence.Role.REFERENCE` on `Kind.METHOD` in `.semanticdb` (no AST walk over `Term.Apply`). The caller is the nearest method definition above by line number.
+- **Vertex FQN** — SemanticDB format, e.g.: `me/peter/graphexplorer/GraphLoader.load(+1).`
+- **startLine** — 0-based internally (as stored in SemanticDB protobuf); 1-based in JSON output.
+- **endLine** — parsed separately from `.scala` source via scalameta; falls back to startLine if source is unavailable.
+- **Caching** — three-level cache in GraphLoader (protobuf docs, scalameta endLines, per-file contributions); mtime-based invalidation via `compileAnalysisFile`.
+- **Output** — writes JSON/HTML/DOT/Mermaid to `target/call-graph/N.{json,html,dot,md}` (N auto-increments). The file path is printed to stdout.
+- **Universal result type** — `GraphResult(nodes, edges, truncated)` used by both `pathAtoB`/`pathsAmong` and `viaVertex`. All output formats consume the same structure.
 
 ---
 
-## Implementation Status
+## Output Formats
 
-| Шаг | Что | Статус |
-|-----|-----|--------|
-| 0 | Phase 0 — разведка SemanticDB | ✅ done |
-| 1 | GraphLoader | ✅ done |
-| 2 | QueryEngine | ✅ done |
-| 3 | CallGraphState | ✅ done |
-| 4 | JsonOutput | ✅ done |
-| 5 | Main CLI | ✅ done |
-| 6 | SBT Plugin (GraphExplorerPlugin) | ✅ done |
-| 7 | Scripted test | ✅ done |
-| 8 | Подключение к blank-slate-server | ✅ done |
-| 9 | graphSearch — поиск вершин по подстроке имени/FQN | ✅ done |
-| 10 | graphModule — анализ cross-module рёбер по path-prefix | ✅ done |
+All query commands support `--format json|html|md|dot`:
+
+| Format   | Extension | Description                              |
+|----------|-----------|------------------------------------------|
+| JSON     | `.json`   | Machine-readable nodes + edges + readHints |
+| HTML     | `.html`   | Interactive graph with pan/zoom/collapse  |
+| Markdown | `.md`     | Mermaid flowchart                        |
+| DOT      | `.dot`    | Graphviz DOT                             |
 
 ---
 
@@ -103,25 +90,11 @@ sbtn "analyzer/publishLocal; plugin/scripted"
 
 ```json
 {
-  "found": true,
+  "query":     { "vertices": ["A", "B"] },
+  "found":     true,
   "truncated": false,
-  "paths": [
-    [
-      { "id": "...", "displayName": "bar", "file": "src/.../Foo.scala", "startLine": 42, "endLine": 55 },
-      { "id": "...", "displayName": "qux", "file": "src/.../Baz.scala", "startLine": 88, "endLine": 101 }
-    ]
-  ]
+  "nodes":     [ { "id": "...", "displayName": "bar", "file": "...", "startLine": 42, "endLine": 55 } ],
+  "edges":     [ { "from": "...", "to": "..." } ],
+  "readHints": [ { "file": "...", "ranges": [ { "start": 40, "end": 60 } ] } ]
 }
 ```
-
-Ошибки:
-```json
-{ "error": "vertex not found", "query": "..." }
-{ "found": false, "from": "A", "to": "B" }
-```
-
----
-
-## Open Questions
-
-1. Покрытие implicit/for-comprehension вызовов — проверить на реальном `blank-slate-server`.

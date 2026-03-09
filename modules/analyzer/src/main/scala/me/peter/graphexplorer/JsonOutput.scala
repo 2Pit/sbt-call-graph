@@ -9,6 +9,79 @@ object JsonOutput {
   /** Returns the next available `dir/N.json` path. */
   def nextOutputFile(dir: Path): Path = OutputCounter.next(dir, ".json")
 
+  // ---------------------------------------------------------------------------
+  // Render (return JSON string)
+  // ---------------------------------------------------------------------------
+
+  def renderPathResult(
+      result:       GraphResult,
+      vertices:     Seq[String],
+      compileError: Boolean,
+      graph:        LoadedGraph,
+      filterOut:    Seq[Regex] = Nil,
+  ): String = {
+    val queryJson = obj("vertices" -> arr(vertices.map(str)))
+    renderGraphResult(result, queryJson, compileError, graph, filterOut)
+  }
+
+  def renderViaResult(
+      result:       Option[GraphResult],
+      vertex:       String,
+      depthIn:      Int,
+      depthOut:     Int,
+      compileError: Boolean,
+      graph:        LoadedGraph,
+      filterOut:    Seq[Regex] = Nil,
+  ): String = {
+    val queryJson = obj(
+      "vertex"   -> str(vertex),
+      "depthIn"  -> depthIn.toString,
+      "depthOut" -> depthOut.toString,
+    )
+    renderGraphResult(result.getOrElse(GraphResult.empty), queryJson, compileError, graph, filterOut)
+  }
+
+  def renderSearchResult(
+      matches: Seq[String],
+      query:   String,
+      graph:   LoadedGraph,
+  ): String = {
+    val fields = Seq(
+      "query"   -> str(query),
+      "count"   -> matches.size.toString,
+      "matches" -> arr(matches.map(nodeJson(_, graph))),
+    )
+    obj(fields: _*)
+  }
+
+  def renderModuleResult(
+      result: ModuleResult,
+      prefix: String,
+      graph:  LoadedGraph,
+  ): String = {
+    def edgeJson(e: ModuleEdge): String =
+      obj("from" -> nodeJson(e.srcId, graph), "to" -> nodeJson(e.tgtId, graph))
+    val fields = Seq(
+      "query"    -> obj("prefix" -> str(prefix)),
+      "outgoing" -> arr(result.outgoing.map(edgeJson)),
+      "incoming" -> arr(result.incoming.map(edgeJson)),
+    )
+    obj(fields: _*)
+  }
+
+  def renderIndex(graph: LoadedGraph, status: String, compileError: Boolean): String = {
+    val fields = Seq(
+      "status" -> str(status),
+      "nodes"  -> graph.nodeCount.toString,
+      "edges"  -> graph.edgeCount.toString,
+    ) ++ (if (compileError) Seq("compileError" -> "true") else Nil)
+    obj(fields: _*)
+  }
+
+  // ---------------------------------------------------------------------------
+  // Write (render + write to file)
+  // ---------------------------------------------------------------------------
+
   def writePathResult(
       result:       GraphResult,
       vertices:     Seq[String],
@@ -16,10 +89,7 @@ object JsonOutput {
       graph:        LoadedGraph,
       outFile:      Path,
       filterOut:    Seq[Regex] = Nil,
-  ): Path = {
-    val queryJson = obj("vertices" -> arr(vertices.map(str)))
-    writeGraphResult(result, queryJson, compileError, graph, outFile, filterOut)
-  }
+  ): Path = write(outFile, renderPathResult(result, vertices, compileError, graph, filterOut))
 
   def writeViaResult(
       result:       Option[GraphResult],
@@ -30,66 +100,36 @@ object JsonOutput {
       graph:        LoadedGraph,
       outFile:      Path,
       filterOut:    Seq[Regex] = Nil,
-  ): Path = {
-    val queryJson = obj(
-      "vertex"   -> str(vertex),
-      "depthIn"  -> depthIn.toString,
-      "depthOut" -> depthOut.toString,
-    )
-    writeGraphResult(result.getOrElse(GraphResult.empty), queryJson, compileError, graph, outFile, filterOut)
-  }
+  ): Path = write(outFile, renderViaResult(result, vertex, depthIn, depthOut, compileError, graph, filterOut))
 
   def writeSearchResult(
       matches: Seq[String],
       query:   String,
       graph:   LoadedGraph,
       outFile: Path,
-  ): Path = {
-    val fields = Seq(
-      "query"   -> str(query),
-      "count"   -> matches.size.toString,
-      "matches" -> arr(matches.map(nodeJson(_, graph))),
-    )
-    write(outFile, obj(fields: _*))
-  }
+  ): Path = write(outFile, renderSearchResult(matches, query, graph))
 
   def writeModuleResult(
       result:  ModuleResult,
       prefix:  String,
       graph:   LoadedGraph,
       outFile: Path,
-  ): Path = {
-    def edgeJson(e: ModuleEdge): String =
-      obj("from" -> nodeJson(e.srcId, graph), "to" -> nodeJson(e.tgtId, graph))
-    val fields = Seq(
-      "query"    -> obj("prefix" -> str(prefix)),
-      "outgoing" -> arr(result.outgoing.map(edgeJson)),
-      "incoming" -> arr(result.incoming.map(edgeJson)),
-    )
-    write(outFile, obj(fields: _*))
-  }
+  ): Path = write(outFile, renderModuleResult(result, prefix, graph))
 
-  def writeIndex(graph: LoadedGraph, status: String, compileError: Boolean, outFile: Path): Path = {
-    val fields = Seq(
-      "status" -> str(status),
-      "nodes"  -> graph.nodeCount.toString,
-      "edges"  -> graph.edgeCount.toString,
-    ) ++ (if (compileError) Seq("compileError" -> "true") else Nil)
-    write(outFile, obj(fields: _*))
-  }
+  def writeIndex(graph: LoadedGraph, status: String, compileError: Boolean, outFile: Path): Path =
+    write(outFile, renderIndex(graph, status, compileError))
 
   // ---------------------------------------------------------------------------
   // Internal
   // ---------------------------------------------------------------------------
 
-  private def writeGraphResult(
+  private def renderGraphResult(
       result:       GraphResult,
       queryJson:    String,
       compileError: Boolean,
       graph:        LoadedGraph,
-      outFile:      Path,
       filterOut:    Seq[Regex],
-  ): Path = {
+  ): String = {
     val hidden    = (id: String) => filterOut.exists(_.findFirstIn(id).isDefined)
     val filtNodes = result.nodes.filterNot(hidden)
     val filtSet   = filtNodes.toSet
@@ -108,7 +148,7 @@ object JsonOutput {
       "edges"     -> edgesArr,
       "readHints" -> hintsArr,
     ) ++ (if (compileError) Seq("compileError" -> "true") else Nil)
-    write(outFile, obj(fields: _*))
+    obj(fields: _*)
   }
 
   // startLine/endLine stored 0-based in SemanticDB; +1 for human-readable output

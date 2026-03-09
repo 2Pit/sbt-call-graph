@@ -1,45 +1,35 @@
 # sbt-graph-explorer — Usage Guide
 
-SBT-плагин для построения call graph Scala-проекта и навигации по нему через `sbtn`-команды.
+SBT plugin for building a call graph of a Scala project and navigating it via `sbtn` commands.
 
 ---
 
-## Установка
+## Setup
 
-### 1. Опубликовать плагин локально
-
-В директории `sbt-graph-exporter`:
-
-```
-analyzer/publishLocal; plugin/publishLocal
-```
-
-### 2. Добавить в целевой проект
+### 1. Add to your project
 
 `project/plugins.sbt`:
 
 ```scala
-addSbtPlugin("me.peter" % "sbt-graph-explorer" % "0.1.0-SNAPSHOT")
+addSbtPlugin("me.peter" % "sbt-graph-explorer" % "<version>")
 ```
 
-`build.sbt` — включить на нужном модуле:
+`build.sbt` — enable on the module you want to analyze:
 
 ```scala
-.enablePlugins(GraphExplorerPlugin)
+lazy val myModule = project
+  .enablePlugins(GraphExplorerPlugin)
 ```
 
-Пример для `blank-slate-server`:
+### 2. Enable SemanticDB
+
+SemanticDB must be enabled for the compiler to produce `.semanticdb` files. If you use scalafix, it's already enabled. Otherwise:
 
 ```scala
-lazy val studyWs = (project in file("srs-study-ws"))
-  .enablePlugins(BuildInfoPlugin, GraphExplorerPlugin)
-.
-..
+semanticdbEnabled := true
 ```
 
-### 3. Сгенерировать SemanticDB-артефакты
-
-SemanticDB уже включён через `sbt-scalafix`. Достаточно скомпилировать:
+Then compile:
 
 ```
 compile
@@ -47,160 +37,147 @@ compile
 
 ---
 
-## Команды
+## Commands
 
-### `graphIndex` — диагностика графа
+### `graphIndex` — graph diagnostics
 
-Показывает количество вершин и рёбер в текущем кэше.
+Shows node and edge counts for the current cached graph.
 
 ```
-sbtn "studyWs/graphIndex"
-```
-
-Результат записывается в `target/graph-last-result.json`:
-
-```json
-{
-  "status": "loaded at ...",
-  "nodes": 1823,
-  "edges": 4201
-}
+myModule/graphIndex
 ```
 
 ---
 
-### `graphVia <vertex> [--depth N]` — вызывающие и вызываемые
+### `graphVia <vertex>` — neighbourhood
 
-Кто вызывает метод и что он сам вызывает. `--depth` задаёт количество транзитивных уровней в каждую сторону (default: 2).
+Shows what calls a method and what it calls. Returns all reachable nodes within BFS depth and the induced subgraph edges between them.
 
 ```
-sbtn "studyWs/graphVia sreo/session/SessionLive#close()."
-sbtn "studyWs/graphVia sreo/session/SessionLive#close(). --depth 3"
-```
-
-```json
-{
-  "vertex": "sreo/session/SessionLive#close().",
-  "callers": [
-    {
-      "id": "sreo/session/SessionLive#closeOnResult().",
-      "displayName": "closeOnResult",
-      "file": "srs-study-ws/src/main/scala/sreo/session/SessionsLive.scala",
-      "startLine": 113,
-      "endLine": 120
-    }
-  ],
-  "callees": [
-    {
-      "id": "sreo/session/SessionLive#closeSession().",
-      "displayName": "closeSession",
-      "file": "srs-study-ws/src/main/scala/sreo/session/SessionsLive.scala",
-      "startLine": 92,
-      "endLine": 98
-    }
-  ]
-}
+myModule/graphVia com/example/MyClass#myMethod().
+myModule/graphVia com/example/MyClass#myMethod(). --depth 3
+myModule/graphVia com/example/MyClass#myMethod(). --depthIn 3 --depthOut 1
 ```
 
 ---
 
-### `graphPath <from> <to>` — путь между двумя методами
+### `graphPath <v1> <v2> [<v3>...]` — paths between methods
 
-BFS-поиск всех путей от `from` до `to`.
-
-```
-sbtn "studyWs/graphPath sreo/session/SessionLive#closeOnResult(). sreo/session/SessionLive#closeSession()."
-```
-
-Опциональные параметры:
+DFS search for all paths between the given vertices. Accepts 2 or more vertices — paths are found between all forward pairs.
 
 ```
-sbtn "studyWs/graphPath A B --maxDepth 15 --maxPaths 50"
+myModule/graphPath com/example/A#foo(). com/example/B#bar().
+myModule/graphPath A B C --maxDepth 15 --maxPaths 50
 ```
 
 Defaults: `maxDepth=20`, `maxPaths=100`.
 
+---
+
+### `graphSearch <query>` — find vertices by name
+
+Case-sensitive substring search on FQN and displayName.
+
+```
+myModule/graphSearch MyClassName
+myModule/graphSearch MyClassName --maxResults 20
+```
+
+---
+
+### `graphModule <path-prefix>` — cross-module coupling
+
+Shows all call edges that cross the boundary of a module identified by file path prefix.
+
+```
+myModule/graphModule com/example/submodule
+```
+
+---
+
+## Output Formats
+
+All query commands support `--format`:
+
+```
+myModule/graphVia com/example/A#foo(). --format html
+myModule/graphPath A B --format md
+```
+
+| Format   | Flag             | Description                              |
+|----------|------------------|------------------------------------------|
+| JSON     | (default)        | Machine-readable nodes + edges + readHints |
+| HTML     | `--format html`  | Interactive graph with pan/zoom/collapse  |
+| Markdown | `--format md`    | Mermaid flowchart for embedding in docs   |
+| DOT      | `--format dot`   | Graphviz DOT for external rendering       |
+
+---
+
+## Filtering
+
+Use `--filterOut` to exclude nodes matching regex patterns (comma-separated):
+
+```
+myModule/graphVia com/example/A#foo(). --filterOut "com/example/util/.*,com/example/logging/.*"
+```
+
+---
+
+## FQN Format
+
+The plugin uses SemanticDB symbol format:
+
+| Element       | Separator | Example            |
+|---------------|-----------|--------------------|
+| Package       | `/`       | `com/example/`     |
+| Object        | `.`       | `MyObject.`        |
+| Class / Trait  | `#`       | `MyClass#`         |
+| Method        | `().`     | `myMethod().`      |
+
+Full example: `com/example/MyClass#myMethod().`
+
+**How to find the exact FQN:**
+
+1. Run `graphSearch <name>` — returns all vertices matching the substring
+2. Pick the `id` from the result and use it in `graphVia` / `graphPath`
+
+**Notes:**
+
+- `val` fields of traits/classes also appear in the graph as methods (SemanticDB represents them this way)
+- `endLine == startLine` for single-line definitions (fields, abstract methods)
+- `startLine` and `endLine` in JSON output are 1-based (human-readable)
+
+---
+
+## Caching
+
+The graph is loaded on the first invocation of any task and cached in memory within the SBT daemon. After `compile`, the cache is invalidated automatically via the `compileAnalysisFile` mtime. Only files that changed are re-processed (three-level per-file cache).
+
+---
+
+## JSON Output
+
+Both `graphVia` and `graphPath` return the same structure:
+
 ```json
 {
-  "found": true,
+  "query":     { "vertex": "com/example/A#foo().", "depthIn": 2, "depthOut": 2 },
+  "found":     true,
   "truncated": false,
-  "from": "sreo/session/SessionLive#closeOnResult().",
-  "to": "sreo/session/SessionLive#closeSession().",
-  "paths": [
-    [
-      {
-        "id": "sreo/session/SessionLive#closeOnResult().",
-        "displayName": "closeOnResult",
-        "file": "srs-study-ws/src/main/scala/sreo/session/SessionsLive.scala",
-        "startLine": 113,
-        "endLine": 120
-      },
-      {
-        "id": "sreo/session/SessionLive#closeSession().",
-        "displayName": "closeSession",
-        "file": "srs-study-ws/src/main/scala/sreo/session/SessionsLive.scala",
-        "startLine": 92,
-        "endLine": 98
-      }
-    ]
+  "nodes": [
+    { "id": "...", "displayName": "foo", "file": "src/.../A.scala", "startLine": 10, "endLine": 25 }
+  ],
+  "edges": [
+    { "from": "...", "to": "..." }
+  ],
+  "readHints": [
+    { "file": "src/.../A.scala", "ranges": [{ "start": 10, "end": 25 }] }
   ]
 }
 ```
 
-Если путь не найден:
+- `readHints` groups nodes by file and merges line ranges within 10 lines of each other
+- `found` — `true` if any nodes were returned
+- `truncated` — `true` if `--maxPaths` limit was hit
 
-```json
-{
-  "found": false,
-  "from": "...",
-  "to": "..."
-}
-```
-
-Если вершина не существует — SBT выведет ошибку в stderr.
-
----
-
-## FQN-формат вершин
-
-Плагин использует SemanticDB symbol format:
-
-| Элемент         | Разделитель | Пример          |
-|-----------------|-------------|-----------------|
-| Пакет           | `/`         | `sreo/session/` |
-| Объект (object) | `.`         | `SessionLive.`  |
-| Класс/трейт     | `#`         | `SessionLive#`  |
-| Метод           | `().`       | `close().`      |
-
-Полный пример: `sreo/session/SessionLive#close().`
-
-**Как узнать точный FQN метода:**
-
-1. Запустить `graphIndex` — убедиться что граф загружен
-2. Запустить `graphVia` с приближённым именем и посмотреть соседей
-3. Или поискать в JSON-файле: `grep "displayName.*methodName" target/graph-last-result.json`
-
-**Особенности:**
-
-- `val`-поля трейтов/классов тоже попадают в граф как методы (SemanticDB представляет их так же)
-- `endLine == startLine` для однострочных определений (полей, абстрактных методов)
-- `startLine` и `endLine` — 1-based (человекочитаемые номера строк)
-
----
-
-## Кэш
-
-Граф загружается при первом вызове любой задачи и кэшируется в памяти SBT-демона. После `compile` кэш инвалидируется автоматически — по mtime файлов в `target/scala-2.13/meta/`.
-
-Принудительно сбросить кэш: перезапустить `sbtn` (редко нужно).
-
----
-
-## Результат в файле
-
-Все команды пишут JSON в `<module>/target/graph-last-result.json` и печатают путь к файлу в stdout. Это позволяет LLM читать файл напрямую через `Read`.
-
-```
-sbtn "studyWs/graphVia sreo/session/SessionLive#close()."
-# → /path/to/blank-slate-server/srs-study-ws/target/graph-last-result.json
-```
+Results are written to `target/call-graph/N.{json,html,dot,md}` (N auto-increments, never overwritten). The file path is printed to stdout.

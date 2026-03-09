@@ -7,15 +7,14 @@ import scala.collection.JavaConverters._
 
 object GraphLoader {
 
-  /**
-   * Load a call graph by merging all .semanticdb files found under each root in `semanticdbRoots`.
-   *
-   * Per-file contributions (edges, meta, symbol kinds) are cached by file mtime.
-   * On a warm cache with 1 file changed, only that file is reprocessed — all others are instant.
-   */
+  /** Load a call graph by merging all .semanticdb files found under each root in `semanticdbRoots`.
+    *
+    * Per-file contributions (edges, meta, symbol kinds) are cached by file mtime.
+    * On a warm cache with 1 file changed, only that file is reprocessed — all others are instant.
+    */
   def load(semanticdbRoots: Seq[Path], sourceRoot: Option[Path] = None): LoadedGraph = {
     endLineParsed = 0
-    val t0    = System.currentTimeMillis()
+    val t0 = System.currentTimeMillis()
     val files = semanticdbRoots.flatMap { root =>
       if (!Files.exists(root)) Nil
       else {
@@ -92,7 +91,7 @@ object GraphLoader {
       metaB ++= c.meta
       c.edges.foreach { case (caller, callee) =>
         outB.getOrElseUpdate(caller, collection.mutable.Set.empty) += callee
-        inB.getOrElseUpdate(callee,  collection.mutable.Set.empty) += caller
+        inB.getOrElseUpdate(callee, collection.mutable.Set.empty)  += caller
       }
     }
 
@@ -104,13 +103,13 @@ object GraphLoader {
     val elapsed = System.currentTimeMillis() - t0
     System.err.println(
       f"[graph-loader] ${files.size} files in $elapsed ms" +
-      f"  (contribs: $recomputed recomputed, ${files.size - recomputed} cached)" +
-      f"  (endLines: $endLineParsed parsed)"
+        f"  (contribs: $recomputed recomputed, ${files.size - recomputed} cached)" +
+        f"  (endLines: $endLineParsed parsed)"
     )
 
     LoadedGraph(
-      out  = outB.map { case (k, v) => k -> v.toSet }.toMap,
-      in   = inB.map  { case (k, v) => k -> v.toSet }.toMap,
+      out = outB.map { case (k, v) => k -> v.toSet }.toMap,
+      in = inB.map { case (k, v) => k -> v.toSet }.toMap,
       meta = metaB.toMap,
     )
   }
@@ -121,18 +120,18 @@ object GraphLoader {
 
   /** All graph data derived from a single .semanticdb file. */
   private case class FileContrib(
-    meta:  Map[String, NodeMeta],
-    edges: Seq[(String, String)],                     // (caller, callee) pairs
-    kinds: Map[String, SymbolInformation.Kind],       // symbols defined in this file
+      meta: Map[String, NodeMeta],
+      edges: Seq[(String, String)],              // (caller, callee) pairs
+      kinds: Map[String, SymbolInformation.Kind], // symbols defined in this file
   )
 
   private val contribCache =
     new java.util.concurrent.ConcurrentHashMap[String, (Long, FileContrib)]()
 
   private def processFile(
-      path:        Path,
+      path: Path,
       projectRoot: Option[Path],
-      kindOf:      collection.Map[String, SymbolInformation.Kind],
+      kindOf: collection.Map[String, SymbolInformation.Kind],
   ): FileContrib = {
     val docs  = loadDocs(path)
     val meta  = collection.mutable.Map.empty[String, NodeMeta]
@@ -147,18 +146,21 @@ object GraphLoader {
       val displayNameOf: Map[String, String] =
         doc.symbols.map(s => s.symbol -> s.displayName).toMap
 
-      val endLineOf: Map[Int, Int] = projectRoot.flatMap { root =>
-        val sourceFile = root.resolve(doc.uri)
-        if (Files.exists(sourceFile)) Some(parseEndLines(sourceFile)) else None
-      }.getOrElse(Map.empty)
+      val endLineOf: Map[Int, Int] = projectRoot
+        .flatMap { root =>
+          val sourceFile = root.resolve(doc.uri)
+          if (Files.exists(sourceFile)) Some(parseEndLines(sourceFile)) else None
+        }
+        .getOrElse(Map.empty)
 
       val methodDefs: Array[(String, Int)] =
-        doc.occurrences.filter { occ =>
-          occ.role == SymbolOccurrence.Role.DEFINITION &&
-          occ.range.isDefined &&
-          !isSynthetic(occ.symbol) &&
-          kindOf.get(occ.symbol).contains(SymbolInformation.Kind.METHOD)
-        }
+        doc.occurrences
+          .filter { occ =>
+            occ.role == SymbolOccurrence.Role.DEFINITION &&
+            occ.range.isDefined &&
+            !isSynthetic(occ.symbol) &&
+            kindOf.get(occ.symbol).contains(SymbolInformation.Kind.METHOD)
+          }
           .map(occ => occ.symbol -> occ.range.get.startLine)
           .toArray
           .sortBy(_._2)
@@ -166,9 +168,9 @@ object GraphLoader {
       methodDefs.foreach { case (sym, line) =>
         if (!meta.contains(sym))
           meta(sym) = NodeMeta(
-            file        = doc.uri,
-            startLine   = line,
-            endLine     = endLineOf.getOrElse(line, line),
+            file = doc.uri,
+            startLine = line,
+            endLine = endLineOf.getOrElse(line, line),
             displayName = displayNameOf.getOrElse(sym, sym) + overloadSuffix(sym),
           )
       }
@@ -184,17 +186,19 @@ object GraphLoader {
           if (found >= 0) Some(methodDefs(found)._1) else None
         }
 
-        doc.occurrences.filter { occ =>
-          occ.role == SymbolOccurrence.Role.REFERENCE &&
-          occ.range.isDefined &&
-          !isSynthetic(occ.symbol) &&
-          kindOf.get(occ.symbol).contains(SymbolInformation.Kind.METHOD)
-        }.foreach { occ =>
-          val callee = occ.symbol
-          callerAt(occ.range.get.startLine).foreach { caller =>
-            if (caller != callee) edges += (caller -> callee)
+        doc.occurrences
+          .filter { occ =>
+            occ.role == SymbolOccurrence.Role.REFERENCE &&
+            occ.range.isDefined &&
+            !isSynthetic(occ.symbol) &&
+            kindOf.get(occ.symbol).contains(SymbolInformation.Kind.METHOD)
           }
-        }
+          .foreach { occ =>
+            val callee = occ.symbol
+            callerAt(occ.range.get.startLine).foreach { caller =>
+              if (caller != callee) edges += (caller -> callee)
+            }
+          }
 
         // Override resolution (CHA)
         doc.symbols.foreach { sym =>
@@ -262,7 +266,7 @@ object GraphLoader {
   }
 
   private def parseEndLinesUncached(sourceFile: Path): Map[Int, Int] = {
-    val input                                = Input.File(sourceFile.toFile)
+    val input = Input.File(sourceFile.toFile)
     def tryParse(d: Dialect): Option[Source] = {
       implicit val dialect: Dialect = d
       input.parse[Source].toOption
@@ -288,8 +292,13 @@ object GraphLoader {
 
   private def extractSyntheticSymbols(tree: scala.meta.internal.semanticdb.Tree): List[String] = {
     import scala.meta.internal.semanticdb.{
-      ApplyTree, FunctionTree, IdTree, MacroExpansionTree,
-      OriginalTree, SelectTree, TypeApplyTree,
+      ApplyTree,
+      FunctionTree,
+      IdTree,
+      MacroExpansionTree,
+      OriginalTree,
+      SelectTree,
+      TypeApplyTree,
     }
     tree match {
       case t: ApplyTree =>
@@ -306,7 +315,7 @@ object GraphLoader {
       case t: IdTree =>
         if (t.symbol.nonEmpty) List(t.symbol) else Nil
       case _: OriginalTree | _: MacroExpansionTree => Nil
-      case _                                        => Nil
+      case _                                       => Nil
     }
   }
 

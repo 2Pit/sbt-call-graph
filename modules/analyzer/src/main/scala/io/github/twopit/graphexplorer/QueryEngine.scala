@@ -4,13 +4,12 @@ import scala.collection.mutable
 
 object QueryEngine {
 
-  /**
-   * Find paths among a set of vertices.
-   * For each prefix pair (v_i, remaining v[i+1..]), finds all directed paths from v_i to
-   * any vertex in v[i+1..]. The union of all found path nodes/edges is returned.
-   */
+  /** Find paths among a set of vertices.
+    * For each prefix pair (v_i, remaining v[i+1..]), finds all directed paths from v_i to
+    * any vertex in v[i+1..]. The union of all found path nodes/edges is returned.
+    */
   def pathsAmong(
-      graph:    LoadedGraph,
+      graph: LoadedGraph,
       vertices: Seq[String],
       maxDepth: Int = 20,
       maxPaths: Int = 100,
@@ -26,7 +25,7 @@ object QueryEngine {
       if (!truncated) {
         val targets        = known.drop(i + 1).toSet
         val (paths, trunc) = collectPaths(graph, from, targets, maxDepth, remaining)
-        allPaths  ++= paths
+        allPaths ++= paths
         remaining -= paths.size
         if (trunc || remaining <= 0) truncated = true
       }
@@ -35,18 +34,17 @@ object QueryEngine {
     buildResult(allPaths.toSeq, truncated, graph.meta)
   }
 
-  /**
-   * Return the neighbourhood of vertex `v` up to BFS depth in each direction.
-   * Returns all reachable nodes (including v) and the induced subgraph edges.
-   */
+  /** Return the neighbourhood of vertex `v` up to BFS depth in each direction. Returns all reachable nodes (including
+    * v) and the induced subgraph edges.
+    */
   def viaVertex(
-      graph:    LoadedGraph,
-      v:        String,
-      depthIn:  Int = 2,
+      graph: LoadedGraph,
+      v: String,
+      depthIn: Int = 2,
       depthOut: Int = 2,
   ): Option[GraphResult] = {
     if (!graph.meta.contains(v)) return None
-    val inNodes  = bfsNodes(v, depthIn,  graph.in)
+    val inNodes  = bfsNodes(v, depthIn, graph.in)
     val outNodes = bfsNodes(v, depthOut, graph.out)
     val allNodes = inNodes ++ outNodes + v
     val edges = allNodes.toSeq.flatMap { n =>
@@ -55,24 +53,25 @@ object QueryEngine {
     Some(GraphResult(NodeSort.byLocation(allNodes, graph.meta), edges))
   }
 
-  /**
-   * Search vertices whose FQN or displayName contains `query` (case-sensitive).
-   * Returns up to `maxResults` matching IDs, sorted by (file, startLine).
-   */
+  /** Search vertices whose FQN or displayName contains `query` (case-sensitive). Returns up to `maxResults` matching
+    * IDs, sorted by (file, startLine).
+    */
   def search(graph: LoadedGraph, query: String, maxResults: Int = 50): Seq[String] =
-    NodeSort.byLocation(
-      graph.meta.collect { case (id, m) if m.displayName.contains(query) || id.contains(query) => id },
-      graph.meta,
-    ).take(maxResults)
+    NodeSort
+      .byLocation(
+        graph.meta.collect { case (id, m) if m.displayName.contains(query) || id.contains(query) => id },
+        graph.meta,
+      )
+      .take(maxResults)
 
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
 
   private def buildResult(
-      paths:     Seq[Seq[String]],
+      paths: Seq[Seq[String]],
       truncated: Boolean,
-      meta:      Map[String, NodeMeta],
+      meta: Map[String, NodeMeta],
   ): GraphResult = {
     val nodes = NodeSort.byLocation(paths.flatten.toSet, meta)
     val edges = paths.flatMap(p => p.zip(p.tail)).distinct
@@ -101,13 +100,13 @@ object QueryEngine {
     visited.toSet
   }
 
-  /** DFS from `from`; records a path whenever a node in `targets` is reached.
-   *  Stops at target nodes (does not recurse through them).
-   *  Returns (paths, truncated). */
+  /** DFS from `from`; records a path whenever a node in `targets` is reached. Stops at target nodes (does not recurse
+    * through them). Returns (paths, truncated).
+    */
   private def collectPaths(
-      graph:    LoadedGraph,
-      from:     String,
-      targets:  Set[String],
+      graph: LoadedGraph,
+      from: String,
+      targets: Set[String],
       maxDepth: Int,
       maxPaths: Int,
   ): (Seq[Seq[String]], Boolean) = {

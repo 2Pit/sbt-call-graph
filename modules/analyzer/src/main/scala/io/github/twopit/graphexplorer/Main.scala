@@ -75,7 +75,7 @@ object Main {
         val depthOut = flagInt(rest, "--depthOut", depth)
         val result   = QueryEngine.viaVertex(graph, vertex, depthIn, depthOut)
         val outFile  = JsonOutput.nextOutputFile(semanticdbDir.getParent.resolve("call-graph"))
-        val written  = JsonOutput.writeViaResult(result, vertex, depthIn, depthOut, compileError = false, graph, outFile)
+        val written = JsonOutput.writeViaResult(result, vertex, depthIn, depthOut, compileError = false, graph, outFile)
         println(written.toAbsolutePath.toString)
 
       case "search" :: query :: _ =>

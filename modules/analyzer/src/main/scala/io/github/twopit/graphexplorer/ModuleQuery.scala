@@ -7,8 +7,8 @@ final case class ModuleResult(outgoing: Seq[ModuleEdge], incoming: Seq[ModuleEdg
 object ModuleQuery {
 
   /** Return all edges crossing the boundary of the module whose files match `pathPrefix`.
-   *  Only edges where BOTH endpoints are known in meta are included.
-   */
+    *  Only edges where BOTH endpoints are known in meta are included.
+    */
   def moduleEdges(graph: LoadedGraph, pathPrefix: String): ModuleResult = {
     val inside = graph.meta.collect { case (id, m) if m.file.contains(pathPrefix) => id }.toSet
 

@@ -12,17 +12,17 @@ class HtmlOutputSpec extends FunSuite {
     NodeMeta(file = file, startLine = line - 1, endLine = line - 1, displayName = name)
 
   private def graph(
-      meta:  Map[String, NodeMeta],
-      edges: (String, String)*,
+      meta: Map[String, NodeMeta],
+      edges: (String, String)*
   ): LoadedGraph = {
     val out = edges.groupBy(_._1).map { case (k, vs) => k -> vs.map(_._2).toSet }
     val in  = edges.groupBy(_._2).map { case (k, vs) => k -> vs.map(_._1).toSet }
     LoadedGraph(out, in, meta)
   }
 
-  /** Extract the raw value of a `const NAME = VALUE;` JS assignment.
-   *  Handles: JS string literals `"..."`, JSON objects `{...}`, JSON arrays `[...]`.
-   */
+  /** Extract the raw value of a `const NAME = VALUE;` JS assignment. Handles: JS string literals `"..."`, JSON objects
+    * `{...}`, JSON arrays `[...]`.
+    */
   private def jsConst(html: String, name: String): String = {
     val marker     = s"const $name"
     val constStart = html.indexOf(marker)
@@ -80,7 +80,7 @@ class HtmlOutputSpec extends FunSuite {
   }
 
   test("HTML loads viz.js 2.x from CDN") {
-    assert(simpleHtml.contains("viz.js@2.1.2/viz.js"),       "missing viz.js script")
+    assert(simpleHtml.contains("viz.js@2.1.2/viz.js"), "missing viz.js script")
     assert(simpleHtml.contains("viz.js@2.1.2/full.render.js"), "missing full.render.js")
   }
 
@@ -140,22 +140,21 @@ class HtmlOutputSpec extends FunSuite {
 
   test("meta contains file basenames (not full paths)") {
     val m = jsConst(simpleHtml, "meta")
-    assert(m.contains("Foo.scala"),     s"Foo.scala missing: $m")
-    assert(m.contains("Bar.scala"),     s"Bar.scala missing: $m")
+    assert(m.contains("Foo.scala"), s"Foo.scala missing: $m")
+    assert(m.contains("Bar.scala"), s"Bar.scala missing: $m")
     assert(!m.contains("src/Foo.scala"), "full path should not appear in file field")
   }
 
   test("meta startLine is 1-based") {
     val m = jsConst(simpleHtml, "meta")
     // node at line 10 (1-based); stored as 0-based (9), displayed as 10
-    assert(m.contains("\"startLine\":10") || m.contains("\"startLine\":20"),
-      s"startLine should be 1-based: $m")
+    assert(m.contains("\"startLine\":10") || m.contains("\"startLine\":20"), s"startLine should be 1-based: $m")
   }
 
   test("meta contains color hex values") {
     val m = jsConst(simpleHtml, "meta")
     assert(m.contains("color"), s"color missing: $m")
-    assert(m.contains("#"),     s"color is not hex: $m")
+    assert(m.contains("#"), s"color is not hex: $m")
   }
 
   test("meta contains cls field with class name") {
@@ -178,10 +177,10 @@ class HtmlOutputSpec extends FunSuite {
       meta = Map(
         "a/Foo#m1()." -> node("src/Foo.scala", "m1", 1),
         "a/Foo#m2()." -> node("src/Foo.scala", "m2", 5),
-      ),
+      )
     )
-    val html = HtmlOutput.render(Set("a/Foo#m1().", "a/Foo#m2()."), Set.empty, g, "t")
-    val m = jsConst(html, "meta")
+    val html   = HtmlOutput.render(Set("a/Foo#m1().", "a/Foo#m2()."), Set.empty, g, "t")
+    val m      = jsConst(html, "meta")
     val colors = "#[0-9a-f]{6}".r.findAllIn(m).toSeq
     assertEquals(colors.toSet.size, 1, s"same class should have same color: $colors")
   }
@@ -197,7 +196,7 @@ class HtmlOutputSpec extends FunSuite {
   test("edges contains from and to fields") {
     val e = jsConst(simpleHtml, "edges")
     assert(e.contains("\"from\""), s"edges 'from' field missing: $e")
-    assert(e.contains("\"to\""),   s"edges 'to' field missing: $e")
+    assert(e.contains("\"to\""), s"edges 'to' field missing: $e")
   }
 
   test("edges is non-empty for a graph with edges") {
@@ -260,12 +259,12 @@ class HtmlOutputSpec extends FunSuite {
     val html = HtmlOutput.render(Set("x/A#m()."), Set.empty, g, "t")
     // The label appears in the meta JSON — double quotes must be escaped
     assert(!html.contains(":\"say \"hi\"\""), "unescaped quote in JSON label")
-    assert(html.contains("say \\\"hi\\\""),   "label not properly escaped in JSON")
+    assert(html.contains("say \\\"hi\\\""), "label not properly escaped in JSON")
   }
 
   test("empty graph produces valid HTML with empty meta and edges") {
     val html = HtmlOutput.render(Set.empty, Set.empty, LoadedGraph.empty, "empty")
-    assertEquals(jsConst(html, "meta"),  "{}")
+    assertEquals(jsConst(html, "meta"), "{}")
     assertEquals(jsConst(html, "edges"), "[]")
   }
 
@@ -274,46 +273,54 @@ class HtmlOutputSpec extends FunSuite {
   // ---------------------------------------------------------------------------
 
   test("DotOutput.prepareData: sorted by file then startLine") {
-    val g = graph(meta = Map(
-      "b/B#b()." -> node("src/B.scala", "b", 5),
-      "a/A#a()." -> node("src/A.scala", "a", 3),
-    ))
+    val g = graph(meta =
+      Map(
+        "b/B#b()." -> node("src/B.scala", "b", 5),
+        "a/A#a()." -> node("src/A.scala", "a", 3),
+      )
+    )
     val data = DotOutput.prepareData(Set("a/A#a().", "b/B#b()."), g)
     assertEquals(data.idOf("a/A#a()."), "n0")
     assertEquals(data.idOf("b/B#b()."), "n1")
   }
 
   test("DotOutput.prepareData: two nodes in same file, sorted by line") {
-    val g = graph(meta = Map(
-      "a/A#late()."  -> node("src/A.scala", "late",  20),
-      "a/A#early()." -> node("src/A.scala", "early",  5),
-    ))
+    val g = graph(meta =
+      Map(
+        "a/A#late()."  -> node("src/A.scala", "late", 20),
+        "a/A#early()." -> node("src/A.scala", "early", 5),
+      )
+    )
     val data = DotOutput.prepareData(Set("a/A#late().", "a/A#early()."), g)
     assertEquals(data.idOf("a/A#early()."), "n0")
-    assertEquals(data.idOf("a/A#late()."),  "n1")
+    assertEquals(data.idOf("a/A#late()."), "n1")
   }
 
   test("DotOutput.prepareData: groups nodes by class name") {
-    val g = graph(meta = Map(
-      "a/A#a()." -> node("src/A.scala", "a", 1),
-      "a/A#b()." -> node("src/A.scala", "b", 2),
-      "b/B#c()." -> node("src/B.scala", "c", 1),
-    ))
+    val g = graph(meta =
+      Map(
+        "a/A#a()." -> node("src/A.scala", "a", 1),
+        "a/A#b()." -> node("src/A.scala", "b", 2),
+        "b/B#c()." -> node("src/B.scala", "c", 1),
+      )
+    )
     val data = DotOutput.prepareData(Set("a/A#a().", "a/A#b().", "b/B#c()."), g)
     assertEquals(data.byGroup("A").toSet, Set("a/A#a().", "a/A#b()."))
     assertEquals(data.byGroup("B").toSet, Set("b/B#c()."))
   }
 
   test("DotOutput.renderGraph: contains subgraph cluster for each class") {
-    val g = graph(meta = Map(
-      "a/A#a()." -> node("src/A.scala", "a", 1),
-      "b/B#b()." -> node("src/B.scala", "b", 1),
-    ))
+    val g = graph(meta =
+      Map(
+        "a/A#a()." -> node("src/A.scala", "a", 1),
+        "b/B#b()." -> node("src/B.scala", "b", 1),
+      )
+    )
     val data = DotOutput.prepareData(Set("a/A#a().", "b/B#b()."), g)
     val dot  = DotOutput.renderGraph(data, Set("a/A#a()." -> "b/B#b()."), g, "t")
     assert(dot.contains("subgraph cluster_"), "missing subgraph")
-    assert(dot.contains("\"A\""),             "missing class A label")
-    assert(dot.contains("\"B\""),             "missing class B label")
-    assert(dot.contains("->"),                "missing edge")
+    assert(dot.contains("\"A\""), "missing class A label")
+    assert(dot.contains("\"B\""), "missing class B label")
+    assert(dot.contains("->"), "missing edge")
   }
 }

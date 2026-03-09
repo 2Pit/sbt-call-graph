@@ -8,10 +8,10 @@ object HtmlOutput {
   def nextOutputFile(dir: Path): Path = OutputCounter.next(dir, ".html")
 
   def writeGraphResult(
-      result:    GraphResult,
-      title:     String,
-      graph:     LoadedGraph,
-      outFile:   Path,
+      result: GraphResult,
+      title: String,
+      graph: LoadedGraph,
+      outFile: Path,
       filterOut: Seq[Regex] = Nil,
   ): Path = {
     val (fn, fe) = DotOutput.applyFilter(result.nodes.toSet, result.edges.toSet, filterOut)
@@ -19,15 +19,31 @@ object HtmlOutput {
   }
 
   private val palette = Array(
-    "#aec6e8","#ffd59e","#b5e0a8","#f4b8b8","#b8dedd",
-    "#faeaa0","#d9b8d9","#ffd6dc","#d4bfb0","#a8d4d2",
-    "#c8e6e3","#ecd3e8","#c8edc0","#fae9a0","#edbdd4",
-    "#d4e8f8","#ffe8c0","#fce0eb","#d8f0e4","#e4d8cc",
+    "#aec6e8",
+    "#ffd59e",
+    "#b5e0a8",
+    "#f4b8b8",
+    "#b8dedd",
+    "#faeaa0",
+    "#d9b8d9",
+    "#ffd6dc",
+    "#d4bfb0",
+    "#a8d4d2",
+    "#c8e6e3",
+    "#ecd3e8",
+    "#c8edc0",
+    "#fae9a0",
+    "#edbdd4",
+    "#d4e8f8",
+    "#ffe8c0",
+    "#fce0eb",
+    "#d8f0e4",
+    "#e4d8cc",
   )
 
   /** Generates JSON-only data for the browser; DOT is built entirely in JS.
-   *  Tests can call this directly to inspect the generated HTML.
-   */
+    *  Tests can call this directly to inspect the generated HTML.
+    */
   private[graphexplorer] def render(
       nodes: Set[String],
       edges: Set[(String, String)],
@@ -47,11 +63,14 @@ object HtmlOutput {
       val endLine   = m.map(_.endLine + 1).getOrElse(0)
       val color     = classColor.getOrElse(cls, palette(0))
       val fileName  = file.split("/").last
-      s"""${DotOutput.dq(data.idOf(fqn))}:{"label":${DotOutput.dq(label)},"fqn":${DotOutput.dq(fqn)},"file":${DotOutput.dq(fileName)},"cls":${DotOutput.dq(cls)},"startLine":$startLine,"endLine":$endLine,"color":${DotOutput.dq(color)}}"""
+      s"""${DotOutput.dq(data.idOf(fqn))}:{"label":${DotOutput.dq(label)},"fqn":${DotOutput.dq(fqn)},"file":${DotOutput
+          .dq(fileName)},"cls":${DotOutput.dq(cls)},"startLine":$startLine,"endLine":$endLine,"color":${DotOutput.dq(
+          color
+        )}}"""
     }
     val edgeEntries = edges.toSeq.flatMap { case (from, to) =>
-      for (fid <- data.idOf.get(from); tid <- data.idOf.get(to)) yield
-        s"""{"from":${DotOutput.dq(fid)},"to":${DotOutput.dq(tid)}}"""
+      for (fid <- data.idOf.get(from); tid <- data.idOf.get(to))
+        yield s"""{"from":${DotOutput.dq(fid)},"to":${DotOutput.dq(tid)}}"""
     }
 
     val metaJson  = metaEntries.mkString("{", ",\n", "}")
@@ -68,24 +87,36 @@ object HtmlOutput {
 
     // Classes A–G; method AB means "in A, calls B"; A0/A1 means standalone methods of A.
     val metaMap = Map(
-      node("A", "AB",  5), node("A", "AC", 12), node("A", "A0", 19),
-      node("B", "BC",  5), node("B", "BD", 12), node("B", "B0", 19),
-      node("C", "CE",  5), node("C", "C0", 12),
-      node("D", "DF",  5), node("D", "D0", 12),
-      node("E", "EF",  5), node("E", "EG", 12),
-      node("F", "FG",  5), node("F", "F0", 12),
-      node("G", "G0",  5), node("G", "G1", 12),
+      node("A", "AB", 5),
+      node("A", "AC", 12),
+      node("A", "A0", 19),
+      node("B", "BC", 5),
+      node("B", "BD", 12),
+      node("B", "B0", 19),
+      node("C", "CE", 5),
+      node("C", "C0", 12),
+      node("D", "DF", 5),
+      node("D", "D0", 12),
+      node("E", "EF", 5),
+      node("E", "EG", 12),
+      node("F", "FG", 5),
+      node("F", "F0", 12),
+      node("G", "G0", 5),
+      node("G", "G1", 12),
     )
     val edges = Seq(
-      fqn("A","AB") -> fqn("B","BC"), fqn("A","AB") -> fqn("B","BD"),
-      fqn("A","AC") -> fqn("C","CE"), fqn("A","AC") -> fqn("C","C0"),
-      fqn("B","BC") -> fqn("C","CE"),
-      fqn("B","BD") -> fqn("D","DF"),
-      fqn("C","CE") -> fqn("E","EF"), fqn("C","CE") -> fqn("E","EG"),
-      fqn("D","DF") -> fqn("F","FG"),
-      fqn("E","EF") -> fqn("F","F0"),
-      fqn("E","EG") -> fqn("G","G1"),
-      fqn("F","FG") -> fqn("G","G0"),
+      fqn("A", "AB") -> fqn("B", "BC"),
+      fqn("A", "AB") -> fqn("B", "BD"),
+      fqn("A", "AC") -> fqn("C", "CE"),
+      fqn("A", "AC") -> fqn("C", "C0"),
+      fqn("B", "BC") -> fqn("C", "CE"),
+      fqn("B", "BD") -> fqn("D", "DF"),
+      fqn("C", "CE") -> fqn("E", "EF"),
+      fqn("C", "CE") -> fqn("E", "EG"),
+      fqn("D", "DF") -> fqn("F", "FG"),
+      fqn("E", "EF") -> fqn("F", "F0"),
+      fqn("E", "EG") -> fqn("G", "G1"),
+      fqn("F", "FG") -> fqn("G", "G0"),
     )
     val out   = edges.groupBy(_._1).map { case (k, vs) => k -> vs.map(_._2).toSet }
     val in    = edges.groupBy(_._2).map { case (k, vs) => k -> vs.map(_._1).toSet }
@@ -97,8 +128,8 @@ object HtmlOutput {
   private def template(title: String, metaJson: String, edgesJson: String): String =
     rawTemplate
       .replace("@@TITLE@@", title.replace("&", "&amp;").replace("<", "&lt;"))
-      .replace("@@META@@",   metaJson)
-      .replace("@@EDGES@@",  edgesJson)
+      .replace("@@META@@", metaJson)
+      .replace("@@EDGES@@", edgesJson)
 
   private lazy val rawTemplate: String = {
     val stream = Option(getClass.getResourceAsStream("graph.html"))

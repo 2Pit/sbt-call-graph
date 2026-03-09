@@ -22,12 +22,12 @@ object GraphExplorerPlugin extends AutoPlugin {
     val graphModule = inputKey[Unit](
       "Show cross-module call edges. Usage: graphModule <path-prefix>"
     )
-    val graphIndex           = taskKey[Unit]("Write call graph diagnostics to target/call-graph/N.json")
+    val graphIndex = taskKey[Unit]("Write call graph diagnostics to target/call-graph/N.json")
     val graphSemanticdbRoots =
       taskKey[Seq[Path]]("All SemanticDB meta dirs to load: current module + internal dependencies")
 
     // Settings — defaults for command flags
-    val graphDefaultDepth   = settingKey[Int]("Default --depth for graphVia (default: 4)")
+    val graphDefaultDepth = settingKey[Int]("Default --depth for graphVia (default: 4)")
     val graphDefaultDepthIn =
       settingKey[Option[Int]]("Default --depthIn for graphVia (overrides graphDefaultDepth if set)")
     val graphDefaultDepthOut =
@@ -36,7 +36,7 @@ object GraphExplorerPlugin extends AutoPlugin {
     val graphDefaultMaxPaths = settingKey[Int]("Default --maxPaths for graphPath (default: 100)")
     val graphDefaultFormat   = settingKey[String]("Default --format: json, html, md, dot (default: json)")
     val graphOutputDir       = settingKey[String]("Output subdirectory under target/ (default: call-graph)")
-    val graphConsole         = settingKey[Boolean]("Print output to console instead of writing to file (default: false)")
+    val graphConsole = settingKey[Boolean]("Print output to console instead of writing to file (default: false)")
   }
 
   import autoImport._
@@ -52,7 +52,7 @@ object GraphExplorerPlugin extends AutoPlugin {
     graphConsole         := false,
     graphSemanticdbRoots := {
       val current = (Compile / classDirectory).value.getParentFile / "meta"
-      val deps    = (Compile / internalDependencyClasspath).value.files
+      val deps = (Compile / internalDependencyClasspath).value.files
         .map(_.getParentFile / "meta")
         .filter(_.isDirectory)
       (current +: deps).distinct.map(_.toPath)
@@ -89,7 +89,7 @@ object GraphExplorerPlugin extends AutoPlugin {
       } else {
         val (written, tOut) = timed {
           format match {
-            case "md"   => MermaidOutput.writeGraphResult(result, graph, MermaidOutput.nextOutputFile(graphDir))
+            case "md" => MermaidOutput.writeGraphResult(result, graph, MermaidOutput.nextOutputFile(graphDir))
             case "html" =>
               HtmlOutput.writeGraphResult(result, "graphPath", graph, HtmlOutput.nextOutputFile(graphDir), filterOut)
             case "dot" =>
@@ -101,12 +101,12 @@ object GraphExplorerPlugin extends AutoPlugin {
                 compileError,
                 graph,
                 JsonOutput.nextOutputFile(graphDir),
-                filterOut
+                filterOut,
               )
           }
         }
         log.debug(
-          f"[graph] load ${tLoad}%5d ms  query ${tQuery}%5d ms  output ${tOut}%5d ms  total ${tLoad + tQuery + tOut}%5d ms  (nodes=${graph.nodeCount}, edges=${graph.edgeCount})"
+          f"[graph] load $tLoad%5d ms  query $tQuery%5d ms  output $tOut%5d ms  total ${tLoad + tQuery + tOut}%5d ms  (nodes=${graph.nodeCount}, edges=${graph.edgeCount})"
         )
         log.info(written.toAbsolutePath.toString)
       }
@@ -147,14 +147,14 @@ object GraphExplorerPlugin extends AutoPlugin {
       } else {
         val (written, tOut) = timed {
           format match {
-            case "md"   => MermaidOutput.writeGraphResult(gr, graph, MermaidOutput.nextOutputFile(graphDir))
+            case "md" => MermaidOutput.writeGraphResult(gr, graph, MermaidOutput.nextOutputFile(graphDir))
             case "html" =>
               HtmlOutput.writeGraphResult(
                 gr,
                 s"graphVia: $title",
                 graph,
                 HtmlOutput.nextOutputFile(graphDir),
-                filterOut
+                filterOut,
               )
             case "dot" =>
               DotOutput.writeGraphResult(gr, s"graphVia: $title", graph, DotOutput.nextOutputFile(graphDir), filterOut)
@@ -167,12 +167,12 @@ object GraphExplorerPlugin extends AutoPlugin {
                 compileError,
                 graph,
                 JsonOutput.nextOutputFile(graphDir),
-                filterOut
+                filterOut,
               )
           }
         }
         log.debug(
-          f"[graph] load ${tLoad}%5d ms  query ${tQuery}%5d ms  output ${tOut}%5d ms  total ${tLoad + tQuery + tOut}%5d ms  (nodes=${gr.nodes.size})"
+          f"[graph] load $tLoad%5d ms  query $tQuery%5d ms  output $tOut%5d ms  total ${tLoad + tQuery + tOut}%5d ms  (nodes=${gr.nodes.size})"
         )
         log.info(written.toAbsolutePath.toString)
       }
@@ -205,7 +205,7 @@ object GraphExplorerPlugin extends AutoPlugin {
           JsonOutput.writeSearchResult(matches, query, graph, JsonOutput.nextOutputFile(graphDir))
         }
         log.debug(
-          f"[graph] load ${tLoad}%5d ms  query ${tQuery}%5d ms  output ${tOut}%5d ms  total ${tLoad + tQuery + tOut}%5d ms  (matches=${matches.size})"
+          f"[graph] load $tLoad%5d ms  query $tQuery%5d ms  output $tOut%5d ms  total ${tLoad + tQuery + tOut}%5d ms  (matches=${matches.size})"
         )
         log.info(written.toAbsolutePath.toString)
       }
@@ -237,7 +237,7 @@ object GraphExplorerPlugin extends AutoPlugin {
           JsonOutput.writeModuleResult(result, prefix, graph, JsonOutput.nextOutputFile(graphDir))
         }
         log.debug(
-          f"[graph] load ${tLoad}%5d ms  query ${tQuery}%5d ms  output ${tOut}%5d ms  total ${tLoad + tQuery + tOut}%5d ms  (out=${result.outgoing.size}, in=${result.incoming.size})"
+          f"[graph] load $tLoad%5d ms  query $tQuery%5d ms  output $tOut%5d ms  total ${tLoad + tQuery + tOut}%5d ms  (out=${result.outgoing.size}, in=${result.incoming.size})"
         )
         log.info(written.toAbsolutePath.toString)
       }
@@ -265,7 +265,7 @@ object GraphExplorerPlugin extends AutoPlugin {
           JsonOutput.writeIndex(graph, status, compileError, JsonOutput.nextOutputFile(graphDir))
         }
         log.debug(
-          f"[graph] load ${tLoad}%5d ms  output ${tOut}%5d ms  total ${tLoad + tOut}%5d ms  (nodes=${graph.nodeCount}, edges=${graph.edgeCount})"
+          f"[graph] load $tLoad%5d ms  output $tOut%5d ms  total ${tLoad + tOut}%5d ms  (nodes=${graph.nodeCount}, edges=${graph.edgeCount})"
         )
         log.info(written.toAbsolutePath.toString)
       }

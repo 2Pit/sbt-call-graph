@@ -4,14 +4,13 @@ import munit.FunSuite
 import scala.meta.internal.semanticdb._
 import java.nio.file.Files
 
-/**
- * Tests that GraphLoader captures call edges from doc.synthetics.
- * These edges arise from for-comprehension desugaring (flatMap/map/withFilter)
- * and implicit conversions — they are NOT present in doc.occurrences.
- *
- * Each test builds a minimal TextDocument programmatically, writes it as a
- * .semanticdb file, and loads it through GraphLoader.load().
- */
+/** Tests that GraphLoader captures call edges from doc.synthetics.
+  * These edges arise from for-comprehension desugaring (flatMap/map/withFilter)
+  * and implicit conversions — they are NOT present in doc.occurrences.
+  *
+  * Each test builds a minimal TextDocument programmatically, writes it as a
+  * .semanticdb file, and loads it through GraphLoader.load().
+  */
 class GraphLoaderSyntheticsSpec extends FunSuite {
 
   // ---------------------------------------------------------------------------
@@ -20,16 +19,16 @@ class GraphLoaderSyntheticsSpec extends FunSuite {
 
   private def defn(symbol: String, line: Int, displayName: String = "m"): SymbolOccurrence =
     SymbolOccurrence(
-      range  = Some(Range(line, 0, line, displayName.length)),
+      range = Some(Range(line, 0, line, displayName.length)),
       symbol = symbol,
-      role   = SymbolOccurrence.Role.DEFINITION,
+      role = SymbolOccurrence.Role.DEFINITION,
     )
 
   private def ref(symbol: String, line: Int): SymbolOccurrence =
     SymbolOccurrence(
-      range  = Some(Range(line, 10, line, 20)),
+      range = Some(Range(line, 10, line, 20)),
       symbol = symbol,
-      role   = SymbolOccurrence.Role.REFERENCE,
+      role = SymbolOccurrence.Role.REFERENCE,
     )
 
   private def methodInfo(symbol: String, name: String): SymbolInformation =
@@ -70,17 +69,17 @@ class GraphLoaderSyntheticsSpec extends FunSuite {
   test("synthetic SelectTree adds edge from caller to selected method") {
     val synthetic = Synthetic(
       range = Some(Range(1, 0, 1, 30)),
-      tree  = SelectTree(
+      tree = SelectTree(
         qualifier = OriginalTree(range = Some(Range(1, 0, 1, 5))),
-        id        = Some(IdTree(symbol = flatMapSym)),
+        id = Some(IdTree(symbol = flatMapSym)),
       ),
     )
     val doc = TextDocument(
-      schema      = Schema.SEMANTICDB4,
-      uri         = "test/Foo.scala",
-      symbols     = baseSymbols,
+      schema = Schema.SEMANTICDB4,
+      uri = "test/Foo.scala",
+      symbols = baseSymbols,
       occurrences = Seq(defn(callerSym, line = 0), defn(targetSym, line = 5)),
-      synthetics  = Seq(synthetic),
+      synthetics = Seq(synthetic),
     )
     val graph = loadDoc(doc)
     assert(
@@ -99,23 +98,25 @@ class GraphLoaderSyntheticsSpec extends FunSuite {
   test("synthetic ApplyTree(SelectTree) adds edge from caller to selected method") {
     val synthetic = Synthetic(
       range = Some(Range(1, 0, 1, 40)),
-      tree  = ApplyTree(
-        function  = SelectTree(
+      tree = ApplyTree(
+        function = SelectTree(
           qualifier = OriginalTree(range = Some(Range(1, 0, 1, 5))),
-          id        = Some(IdTree(symbol = flatMapSym)),
+          id = Some(IdTree(symbol = flatMapSym)),
         ),
-        arguments = Seq(FunctionTree(
-          parameters = Seq(IdTree("local0")),
-          body       = IdTree(symbol = targetSym),
-        )),
+        arguments = Seq(
+          FunctionTree(
+            parameters = Seq(IdTree("local0")),
+            body = IdTree(symbol = targetSym),
+          )
+        ),
       ),
     )
     val doc = TextDocument(
-      schema      = Schema.SEMANTICDB4,
-      uri         = "test/Foo.scala",
-      symbols     = baseSymbols,
+      schema = Schema.SEMANTICDB4,
+      uri = "test/Foo.scala",
+      symbols = baseSymbols,
       occurrences = Seq(defn(callerSym, line = 0), defn(targetSym, line = 5)),
-      synthetics  = Seq(synthetic),
+      synthetics = Seq(synthetic),
     )
     val graph = loadDoc(doc)
     assert(
@@ -138,17 +139,17 @@ class GraphLoaderSyntheticsSpec extends FunSuite {
   test("FunctionTree body: callee attributed to enclosing method, no lambda node") {
     val synthetic = Synthetic(
       range = Some(Range(1, 0, 1, 30)),
-      tree  = FunctionTree(
+      tree = FunctionTree(
         parameters = Seq(IdTree("local0")),
-        body       = IdTree(symbol = targetSym),
+        body = IdTree(symbol = targetSym),
       ),
     )
     val doc = TextDocument(
-      schema      = Schema.SEMANTICDB4,
-      uri         = "test/Foo.scala",
-      symbols     = baseSymbols,
+      schema = Schema.SEMANTICDB4,
+      uri = "test/Foo.scala",
+      symbols = baseSymbols,
       occurrences = Seq(defn(callerSym, line = 0), defn(targetSym, line = 5)),
-      synthetics  = Seq(synthetic),
+      synthetics = Seq(synthetic),
     )
     val graph = loadDoc(doc)
     assert(
@@ -167,16 +168,16 @@ class GraphLoaderSyntheticsSpec extends FunSuite {
     // target is referenced both in occurrences and wrapped in OriginalTree in a synthetic
     val synthetic = Synthetic(
       range = Some(Range(1, 0, 1, 20)),
-      tree  = OriginalTree(range = Some(Range(1, 10, 1, 16))),
+      tree = OriginalTree(range = Some(Range(1, 10, 1, 16))),
     )
     val doc = TextDocument(
-      schema      = Schema.SEMANTICDB4,
-      uri         = "test/Foo.scala",
-      symbols     = baseSymbols,
+      schema = Schema.SEMANTICDB4,
+      uri = "test/Foo.scala",
+      symbols = baseSymbols,
       occurrences = Seq(
         defn(callerSym, line = 0),
         defn(targetSym, line = 5),
-        ref(targetSym, line = 1),   // already in occurrences
+        ref(targetSym, line = 1), // already in occurrences
       ),
       synthetics = Seq(synthetic),
     )
@@ -198,26 +199,26 @@ class GraphLoaderSyntheticsSpec extends FunSuite {
   // ---------------------------------------------------------------------------
 
   test("overriddenSymbols: adds virtual dispatch edge traitMethod → implMethod") {
-    val traitSym = "test/Repo#find()."
-    val implSym  = "test/RepoLive#find()."
+    val traitSym   = "test/Repo#find()."
+    val implSym    = "test/RepoLive#find()."
     val callerSym2 = "test/Service#run()."
 
     val doc = TextDocument(
-      schema  = Schema.SEMANTICDB4,
-      uri     = "test/RepoLive.scala",
+      schema = Schema.SEMANTICDB4,
+      uri = "test/RepoLive.scala",
       symbols = Seq(
-        methodInfo(traitSym,   "find"),
+        methodInfo(traitSym, "find"),
         SymbolInformation(
-          symbol            = implSym,
-          kind              = SymbolInformation.Kind.METHOD,
-          displayName       = "find",
+          symbol = implSym,
+          kind = SymbolInformation.Kind.METHOD,
+          displayName = "find",
           overriddenSymbols = Seq(traitSym),
         ),
         methodInfo(callerSym2, "run"),
       ),
       occurrences = Seq(
         defn(callerSym2, line = 0),
-        defn(implSym,    line = 5),
+        defn(implSym, line = 5),
         // caller calls the TRAIT method (as static analysis sees it)
         ref(traitSym, line = 1),
       ),
@@ -248,18 +249,26 @@ class GraphLoaderSyntheticsSpec extends FunSuite {
     val implB    = "test/RepoB#find()."
 
     val doc = TextDocument(
-      schema  = Schema.SEMANTICDB4,
-      uri     = "test/Impls.scala",
+      schema = Schema.SEMANTICDB4,
+      uri = "test/Impls.scala",
       symbols = Seq(
         methodInfo(traitSym, "find"),
-        SymbolInformation(symbol = implA, kind = SymbolInformation.Kind.METHOD, displayName = "find",
-          overriddenSymbols = Seq(traitSym)),
-        SymbolInformation(symbol = implB, kind = SymbolInformation.Kind.METHOD, displayName = "find",
-          overriddenSymbols = Seq(traitSym)),
+        SymbolInformation(
+          symbol = implA,
+          kind = SymbolInformation.Kind.METHOD,
+          displayName = "find",
+          overriddenSymbols = Seq(traitSym),
+        ),
+        SymbolInformation(
+          symbol = implB,
+          kind = SymbolInformation.Kind.METHOD,
+          displayName = "find",
+          overriddenSymbols = Seq(traitSym),
+        ),
       ),
       occurrences = Seq(defn(implA, line = 0), defn(implB, line = 5)),
     )
-    val graph = loadDoc(doc)
+    val graph       = loadDoc(doc)
     val dispatchees = graph.out.getOrElse(traitSym, Set.empty)
     assert(dispatchees.contains(implA), s"expected dispatch edge to $implA")
     assert(dispatchees.contains(implB), s"expected dispatch edge to $implB")
@@ -267,34 +276,48 @@ class GraphLoaderSyntheticsSpec extends FunSuite {
 
   test("overriddenSymbols: multi-level override chain A → B → C all connected") {
     // trait A ← abstract B ← concrete C
-    val traitA = "test/A#m()."
+    val traitA    = "test/A#m()."
     val abstractB = "test/B#m()."
     val concreteC = "test/C#m()."
 
     val doc = TextDocument(
-      schema  = Schema.SEMANTICDB4,
-      uri     = "test/Chain.scala",
+      schema = Schema.SEMANTICDB4,
+      uri = "test/Chain.scala",
       symbols = Seq(
         methodInfo(traitA, "m"),
-        SymbolInformation(symbol = abstractB, kind = SymbolInformation.Kind.METHOD, displayName = "m",
-          overriddenSymbols = Seq(traitA)),
-        SymbolInformation(symbol = concreteC, kind = SymbolInformation.Kind.METHOD, displayName = "m",
-          overriddenSymbols = Seq(abstractB)),
+        SymbolInformation(
+          symbol = abstractB,
+          kind = SymbolInformation.Kind.METHOD,
+          displayName = "m",
+          overriddenSymbols = Seq(traitA),
+        ),
+        SymbolInformation(
+          symbol = concreteC,
+          kind = SymbolInformation.Kind.METHOD,
+          displayName = "m",
+          overriddenSymbols = Seq(abstractB),
+        ),
       ),
       occurrences = Seq(defn(abstractB, line = 0), defn(concreteC, line = 5)),
     )
     val graph = loadDoc(doc)
-    assert(graph.out.getOrElse(traitA,    Set.empty).contains(abstractB), s"$traitA → $abstractB")
+    assert(graph.out.getOrElse(traitA, Set.empty).contains(abstractB), s"$traitA → $abstractB")
     assert(graph.out.getOrElse(abstractB, Set.empty).contains(concreteC), s"$abstractB → $concreteC")
   }
 
   test("overriddenSymbols: no self-loop when symbol overrides itself (guard)") {
     val sym = "test/Foo#m()."
     val doc = TextDocument(
-      schema  = Schema.SEMANTICDB4,
-      uri     = "test/Foo.scala",
-      symbols = Seq(SymbolInformation(symbol = sym, kind = SymbolInformation.Kind.METHOD,
-        displayName = "m", overriddenSymbols = Seq(sym))),
+      schema = Schema.SEMANTICDB4,
+      uri = "test/Foo.scala",
+      symbols = Seq(
+        SymbolInformation(
+          symbol = sym,
+          kind = SymbolInformation.Kind.METHOD,
+          displayName = "m",
+          overriddenSymbols = Seq(sym),
+        )
+      ),
       occurrences = Seq(defn(sym, line = 0)),
     )
     val graph = loadDoc(doc)
@@ -305,11 +328,15 @@ class GraphLoaderSyntheticsSpec extends FunSuite {
     val externalTrait = "scala/collection/IterableOnce#foreach()."
     val implSym2      = "test/MyCol#foreach()."
     val doc = TextDocument(
-      schema  = Schema.SEMANTICDB4,
-      uri     = "test/MyCol.scala",
+      schema = Schema.SEMANTICDB4,
+      uri = "test/MyCol.scala",
       symbols = Seq(
-        SymbolInformation(symbol = implSym2, kind = SymbolInformation.Kind.METHOD,
-          displayName = "foreach", overriddenSymbols = Seq(externalTrait)),
+        SymbolInformation(
+          symbol = implSym2,
+          kind = SymbolInformation.Kind.METHOD,
+          displayName = "foreach",
+          overriddenSymbols = Seq(externalTrait),
+        )
       ),
       occurrences = Seq(defn(implSym2, line = 0)),
     )
@@ -328,18 +355,18 @@ class GraphLoaderSyntheticsSpec extends FunSuite {
   test("multiple synthetics on different lines in the same method all attributed to caller") {
     val synth1 = Synthetic(
       range = Some(Range(1, 0, 1, 20)),
-      tree  = IdTree(symbol = flatMapSym),
+      tree = IdTree(symbol = flatMapSym),
     )
     val synth2 = Synthetic(
       range = Some(Range(2, 0, 2, 20)),
-      tree  = IdTree(symbol = mapSym),
+      tree = IdTree(symbol = mapSym),
     )
     val doc = TextDocument(
-      schema      = Schema.SEMANTICDB4,
-      uri         = "test/Foo.scala",
-      symbols     = baseSymbols,
+      schema = Schema.SEMANTICDB4,
+      uri = "test/Foo.scala",
+      symbols = baseSymbols,
       occurrences = Seq(defn(callerSym, line = 0), defn(targetSym, line = 5)),
-      synthetics  = Seq(synth1, synth2),
+      synthetics = Seq(synth1, synth2),
     )
     val graph  = loadDoc(doc)
     val outSet = graph.out.getOrElse(callerSym, Set.empty)

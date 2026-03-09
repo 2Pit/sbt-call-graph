@@ -233,8 +233,8 @@ class QueryEngineSpec extends FunSuite {
     val fooId = "mod/A#foo()."
     val libId = "scala/collection/List#map()."
     val g = LoadedGraph(
-      out  = Map(fooId -> Set(libId)),
-      in   = Map(libId -> Set(fooId)),
+      out = Map(fooId -> Set(libId)),
+      in = Map(libId -> Set(fooId)),
       meta = Map(fooId -> NodeMeta("mod/A.scala", 1, 5, "foo")),
     )
     val r = ModuleQuery.moduleEdges(g, "mod/")

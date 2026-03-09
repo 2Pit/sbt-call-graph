@@ -9,10 +9,10 @@ object CallGraphState {
   @volatile private var cached: Option[Cached] = None
 
   /** `stamp` should be a value that changes when the SemanticDB files are regenerated
-   *  (e.g. the mtime of SBT's compile-analysis file).  A cache hit requires the same
-   *  roots, same sourceRoot, AND the same stamp — so the file walk that used to happen
-   *  on every call is gone entirely.
-   */
+    *  (e.g. the mtime of SBT's compile-analysis file).  A cache hit requires the same
+    *  roots, same sourceRoot, AND the same stamp — so the file walk that used to happen
+    *  on every call is gone entirely.
+    */
   def getOrLoad(semanticdbRoots: Seq[Path], sourceRoot: Option[Path] = None, stamp: Long = 0L): LoadedGraph = {
     val rootSet = semanticdbRoots.toSet
     cached match {

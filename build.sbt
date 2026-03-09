@@ -1,7 +1,8 @@
 addCommandAlias("pub", """set ThisBuild / version := "0.1.0-SNAPSHOT"; analyzer/publishLocal; plugin/publishLocal""")
+addCommandAlias("fmt", "scalafmtAll; scalafmtSbt")
 addCommandAlias(
   "selfVia",
-  "analyzer/graphVia io/github/twopit/graphexplorer/CallGraphState.main(). --format html --depthOut 10 --depthIn 1"
+  "analyzer/graphVia io/github/twopit/graphexplorer/CallGraphState.main(). --format html --depthOut 10 --depthIn 1",
 )
 
 ThisBuild / organization := "io.github.2pit"
@@ -10,7 +11,7 @@ ThisBuild / scalaVersion := "2.12.20"
 // scalameta 4.x is published for both 2.12 and 2.13
 lazy val analyzer = project
   .in(file("modules/analyzer"))
-  .enablePlugins(GraphExplorerPlugin)
+//  .enablePlugins(GraphExplorerPlugin)
   .settings(
     name              := "graph-explorer-analyzer",
     semanticdbEnabled := true,
@@ -25,10 +26,10 @@ lazy val plugin = project
   .dependsOn(analyzer)
   .enablePlugins(ScriptedPlugin)
   .settings(
-    name      := "sbt-graph-explorer",
-    sbtPlugin := true,
+    name                := "sbt-graph-explorer",
+    sbtPlugin           := true,
     scriptedLaunchOpts ++= Seq("-Xmx1g", s"-Dplugin.version=${version.value}"),
-    scriptedBufferLog := false,
+    scriptedBufferLog   := false,
   )
 
 lazy val root = project

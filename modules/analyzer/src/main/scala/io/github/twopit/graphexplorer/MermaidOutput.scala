@@ -7,8 +7,8 @@ object MermaidOutput {
   def nextOutputFile(dir: Path): Path = OutputCounter.next(dir, ".md")
 
   def writeGraphResult(
-      result:  GraphResult,
-      graph:   LoadedGraph,
+      result: GraphResult,
+      graph: LoadedGraph,
       outFile: Path,
   ): Path =
     DotOutput.write(outFile, render(result.nodes.toSet, result.edges.toSet, graph))
@@ -30,7 +30,8 @@ object MermaidOutput {
       sb.append("  end\n")
     }
 
-    edges.toSeq.sortBy { case (f, t) => (data.idOf.getOrElse(f, ""), data.idOf.getOrElse(t, "")) }
+    edges.toSeq
+      .sortBy { case (f, t) => (data.idOf.getOrElse(f, ""), data.idOf.getOrElse(t, "")) }
       .foreach { case (from, to) =>
         for (fid <- data.idOf.get(from); tid <- data.idOf.get(to))
           sb.append(s"  $fid --> $tid\n")

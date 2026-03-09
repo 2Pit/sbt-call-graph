@@ -14,24 +14,24 @@ object JsonOutput {
   // ---------------------------------------------------------------------------
 
   def renderPathResult(
-      result:       GraphResult,
-      vertices:     Seq[String],
+      result: GraphResult,
+      vertices: Seq[String],
       compileError: Boolean,
-      graph:        LoadedGraph,
-      filterOut:    Seq[Regex] = Nil,
+      graph: LoadedGraph,
+      filterOut: Seq[Regex] = Nil,
   ): String = {
     val queryJson = obj("vertices" -> arr(vertices.map(str)))
     renderGraphResult(result, queryJson, compileError, graph, filterOut)
   }
 
   def renderViaResult(
-      result:       Option[GraphResult],
-      vertex:       String,
-      depthIn:      Int,
-      depthOut:     Int,
+      result: Option[GraphResult],
+      vertex: String,
+      depthIn: Int,
+      depthOut: Int,
       compileError: Boolean,
-      graph:        LoadedGraph,
-      filterOut:    Seq[Regex] = Nil,
+      graph: LoadedGraph,
+      filterOut: Seq[Regex] = Nil,
   ): String = {
     val queryJson = obj(
       "vertex"   -> str(vertex),
@@ -43,8 +43,8 @@ object JsonOutput {
 
   def renderSearchResult(
       matches: Seq[String],
-      query:   String,
-      graph:   LoadedGraph,
+      query: String,
+      graph: LoadedGraph,
   ): String = {
     val fields = Seq(
       "query"   -> str(query),
@@ -57,7 +57,7 @@ object JsonOutput {
   def renderModuleResult(
       result: ModuleResult,
       prefix: String,
-      graph:  LoadedGraph,
+      graph: LoadedGraph,
   ): String = {
     def edgeJson(e: ModuleEdge): String =
       obj("from" -> nodeJson(e.srcId, graph), "to" -> nodeJson(e.tgtId, graph))
@@ -83,36 +83,36 @@ object JsonOutput {
   // ---------------------------------------------------------------------------
 
   def writePathResult(
-      result:       GraphResult,
-      vertices:     Seq[String],
+      result: GraphResult,
+      vertices: Seq[String],
       compileError: Boolean,
-      graph:        LoadedGraph,
-      outFile:      Path,
-      filterOut:    Seq[Regex] = Nil,
+      graph: LoadedGraph,
+      outFile: Path,
+      filterOut: Seq[Regex] = Nil,
   ): Path = write(outFile, renderPathResult(result, vertices, compileError, graph, filterOut))
 
   def writeViaResult(
-      result:       Option[GraphResult],
-      vertex:       String,
-      depthIn:      Int,
-      depthOut:     Int,
+      result: Option[GraphResult],
+      vertex: String,
+      depthIn: Int,
+      depthOut: Int,
       compileError: Boolean,
-      graph:        LoadedGraph,
-      outFile:      Path,
-      filterOut:    Seq[Regex] = Nil,
+      graph: LoadedGraph,
+      outFile: Path,
+      filterOut: Seq[Regex] = Nil,
   ): Path = write(outFile, renderViaResult(result, vertex, depthIn, depthOut, compileError, graph, filterOut))
 
   def writeSearchResult(
       matches: Seq[String],
-      query:   String,
-      graph:   LoadedGraph,
+      query: String,
+      graph: LoadedGraph,
       outFile: Path,
   ): Path = write(outFile, renderSearchResult(matches, query, graph))
 
   def writeModuleResult(
-      result:  ModuleResult,
-      prefix:  String,
-      graph:   LoadedGraph,
+      result: ModuleResult,
+      prefix: String,
+      graph: LoadedGraph,
       outFile: Path,
   ): Path = write(outFile, renderModuleResult(result, prefix, graph))
 
@@ -124,11 +124,11 @@ object JsonOutput {
   // ---------------------------------------------------------------------------
 
   private def renderGraphResult(
-      result:       GraphResult,
-      queryJson:    String,
+      result: GraphResult,
+      queryJson: String,
       compileError: Boolean,
-      graph:        LoadedGraph,
-      filterOut:    Seq[Regex],
+      graph: LoadedGraph,
+      filterOut: Seq[Regex],
   ): String = {
     val hidden    = (id: String) => filterOut.exists(_.findFirstIn(id).isDefined)
     val filtNodes = result.nodes.filterNot(hidden)
@@ -153,13 +153,14 @@ object JsonOutput {
 
   // startLine/endLine stored 0-based in SemanticDB; +1 for human-readable output
   private def metaFields(id: String, meta: Option[NodeMeta]): Seq[(String, String)] = meta match {
-    case Some(m) => Seq(
-      "id"          -> str(id),
-      "displayName" -> str(m.displayName),
-      "file"        -> str(m.file),
-      "startLine"   -> (m.startLine + 1).toString,
-      "endLine"     -> (m.endLine + 1).toString,
-    )
+    case Some(m) =>
+      Seq(
+        "id"          -> str(id),
+        "displayName" -> str(m.displayName),
+        "file"        -> str(m.file),
+        "startLine"   -> (m.startLine + 1).toString,
+        "endLine"     -> (m.endLine + 1).toString,
+      )
     case None => Seq("id" -> str(id))
   }
 
@@ -171,16 +172,19 @@ object JsonOutput {
     val byFile = nodeIds
       .flatMap(id => meta.get(id).map(m => m.file -> (m.startLine, m.endLine)))
       .groupBy(_._1)
-      .toSeq.sortBy(_._1)
+      .toSeq
+      .sortBy(_._1)
 
     val hints = byFile.map { case (file, pairs) =>
       val sorted = pairs.map(_._2).sortBy(_._1)
-      val merged = sorted.foldLeft(List.empty[(Int, Int)]) {
-        case (Nil, range) => List(range)
-        case (head :: tail, (s, e)) =>
-          if (s - head._2 <= 10) (head._1, math.max(head._2, e)) :: tail
-          else (s, e) :: head :: tail
-      }.reverse
+      val merged = sorted
+        .foldLeft(List.empty[(Int, Int)]) {
+          case (Nil, range) => List(range)
+          case (head :: tail, (s, e)) =>
+            if (s - head._2 <= 10) (head._1, math.max(head._2, e)) :: tail
+            else (s, e) :: head :: tail
+        }
+        .reverse
 
       val rangesArr = arr(merged.map { case (s, e) =>
         obj("start" -> (s + 1).toString, "end" -> (e + 1).toString)
@@ -194,14 +198,16 @@ object JsonOutput {
     "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n") + "\""
 
   private def obj(fields: (String, String)*): String =
-    fields.map { case (k, v) =>
-      val lines = v.split("\n", -1)
-      if (lines.length == 1) s"  ${str(k)}: $v"
-      else {
-        val rest = lines.tail.map("  " + _).mkString("\n")
-        s"  ${str(k)}: ${lines.head}\n$rest"
+    fields
+      .map { case (k, v) =>
+        val lines = v.split("\n", -1)
+        if (lines.length == 1) s"  ${str(k)}: $v"
+        else {
+          val rest = lines.tail.map("  " + _).mkString("\n")
+          s"  ${str(k)}: ${lines.head}\n$rest"
+        }
       }
-    }.mkString("{\n", ",\n", "\n}")
+      .mkString("{\n", ",\n", "\n}")
 
   private def arr(items: Seq[String]): String =
     if (items.isEmpty) "[]"

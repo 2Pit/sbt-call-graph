@@ -1,5 +1,7 @@
 # sbt-call-graph
 
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.2pit/sbt-call-graph_2.12_1.0)](https://central.sonatype.com/artifact/io.github.2pit/sbt-call-graph_2.12_1.0)
+
 An SBT plugin that builds a method-level call graph from SemanticDB and lets you query it without leaving the SBT shell.
 
 ## What it does

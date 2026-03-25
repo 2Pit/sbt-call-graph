@@ -10,13 +10,16 @@ ThisBuild / scalaVersion := "2.12.20"
 ThisBuild / homepage     := Some(url("https://github.com/2Pit/sbt-call-graph"))
 ThisBuild / licenses     := Seq("MIT" -> url("https://opensource.org/licenses/MIT"))
 ThisBuild / developers := List(
-  Developer("2Pit", "Petr B.", "2Pit@users.noreply.github.com", url("https://github.com/2Pit")),
+  Developer("2Pit", "Petr B.", "2Pit@users.noreply.github.com", url("https://github.com/2Pit"))
 )
 ThisBuild / scmInfo := Some(
-  ScmInfo(url("https://github.com/2Pit/sbt-call-graph"), "scm:git@github.com:2Pit/sbt-call-graph.git"),
+  ScmInfo(url("https://github.com/2Pit/sbt-call-graph"), "scm:git@github.com:2Pit/sbt-call-graph.git")
 )
-ThisBuild / sonatypeCredentialHost := xerial.sbt.Sonatype.sonatypeCentralHost
-ThisBuild / description := "SBT plugin that builds a method-level call graph from SemanticDB"
+ThisBuild / sonatypeCredentialHost           := xerial.sbt.Sonatype.sonatypeCentralHost
+ThisBuild / publishTo                        := sonatypePublishToBundle.value
+ThisBuild / versionScheme                    := Some("early-semver")
+ThisBuild / sbtPluginPublishLegacyMavenStyle := false
+ThisBuild / description                      := "SBT plugin that builds a method-level call graph from SemanticDB"
 
 // scalameta 4.x is published for both 2.12 and 2.13
 lazy val analyzer = project

@@ -2,7 +2,7 @@ addCommandAlias("pub", """set ThisBuild / version := "0.1.0-SNAPSHOT"; analyzer/
 addCommandAlias("fmt", "scalafmtAll; scalafmtSbt")
 addCommandAlias(
   "selfVia",
-  "analyzer/graphVia io/github/twopit/callgraph/CallGraphState.main(). --format html --depthOut 10 --depthIn 1",
+  "analyzer/graphVia io/github/twopit/callgraph/CallGraphState.getOrLoad(). --format html --depthOut 3 --depthIn 2",
 )
 
 ThisBuild / organization := "io.github.2pit"
@@ -11,7 +11,7 @@ ThisBuild / scalaVersion := "2.12.20"
 // scalameta 4.x is published for both 2.12 and 2.13
 lazy val analyzer = project
   .in(file("modules/analyzer"))
-//  .enablePlugins(CallGraphPlugin)
+  .enablePlugins(CallGraphPlugin)
   .settings(
     name              := "call-graph-analyzer",
     semanticdbEnabled := true,

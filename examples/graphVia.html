@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>graphVia: getOrLoad</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#e8e8e8;color:#222;height:100vh;display:flex;flex-direction:column}
+#toolbar{display:flex;align-items:center;gap:8px;padding:8px 14px;background:#d8d8d8;border-bottom:1px solid #bbb;flex-shrink:0}
+#toolbar h1{font-size:13px;color:#333;font-weight:500;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+button{background:#ccc;color:#333;border:1px solid #aaa;padding:4px 11px;border-radius:4px;cursor:pointer;font-size:12px}
+button:hover{background:#bbb}
+#main{display:flex;flex:1;overflow:hidden}
+#graph{flex:1;overflow:hidden;position:relative;background:#e8e8e8}
+#graph svg{position:absolute;inset:0;width:100%;height:100%}
+#info{width:290px;background:#f0f0f0;border-left:1px solid #bbb;padding:14px;font-size:12px;overflow-y:auto;flex-shrink:0}
+#info h2{font-size:12px;color:#555;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
+.row{margin-bottom:8px}
+.lbl{color:#888;font-size:10px;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px}
+.val{word-break:break-all;color:#333;line-height:1.4}
+#hint{color:#999;font-size:11px;margin-top:8px;line-height:1.6}
+#error{color:#c0392b;font-size:11px;padding:16px;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<div id="toolbar">
+  <h1>graphVia: getOrLoad</h1>
+  <button id="btnFit">Fit</button>
+  <button onclick="collapseAll()">Collapse all</button>
+  <button onclick="expandAll()">Expand all</button>
+  <button onclick="restoreAll()">Restore all</button>
+</div>
+<div id="main">
+  <div id="graph"><div id="hint-load" style="padding:16px;color:#555">Loading Graphviz…</div></div>
+  <div id="info">
+    <h2>Node info</h2>
+    <div id="panel"><div id="hint">Click a node for details.<br><br>Double-click a method to collapse its file.<br>Double-click a file node to expand.</div></div>
+  </div>
+</div>
+<script src="https://unpkg.com/viz.js@2.1.2/viz.js"></script>
+<script src="https://unpkg.com/viz.js@2.1.2/full.render.js"></script>
+<script src="https://unpkg.com/svg-pan-zoom@3/dist/svg-pan-zoom.min.js"></script>
+<script>
+const meta  = {"n0":{"label":"io/github/twopit/callgraph/GraphLoader.`endLineParsed_=`().","fqn":"io/github/twopit/callgraph/GraphLoader.`endLineParsed_=`().","file":"unknown","cls":"GraphLoader","startLine":0,"endLine":0,"color":"#ffd59e"},
+"n1":{"label":"io/github/twopit/callgraph/CallGraphState.`cached_=`().","fqn":"io/github/twopit/callgraph/CallGraphState.`cached_=`().","file":"unknown","cls":"CallGraphState","startLine":0,"endLine":0,"color":"#aec6e8"},
+"n2":{"label":"sourceRoot","fqn":"io/github/twopit/callgraph/CallGraphState.Cached#sourceRoot.","file":"CallGraphState.scala","cls":"CallGraphState","startLine":7,"endLine":7,"color":"#aec6e8"},
+"n3":{"label":"roots","fqn":"io/github/twopit/callgraph/CallGraphState.Cached#roots.","file":"CallGraphState.scala","cls":"CallGraphState","startLine":7,"endLine":7,"color":"#aec6e8"},
+"n4":{"label":"stamp","fqn":"io/github/twopit/callgraph/CallGraphState.Cached#stamp.","file":"CallGraphState.scala","cls":"CallGraphState","startLine":7,"endLine":7,"color":"#aec6e8"},
+"n5":{"label":"graph","fqn":"io/github/twopit/callgraph/CallGraphState.Cached#graph.","file":"CallGraphState.scala","cls":"CallGraphState","startLine":7,"endLine":7,"color":"#aec6e8"},
+"n6":{"label":"cached","fqn":"io/github/twopit/callgraph/CallGraphState.cached().","file":"CallGraphState.scala","cls":"CallGraphState","startLine":9,"endLine":9,"color":"#aec6e8"},
+"n7":{"label":"getOrLoad","fqn":"io/github/twopit/callgraph/CallGraphState.getOrLoad().","file":"CallGraphState.scala","cls":"CallGraphState","startLine":16,"endLine":26,"color":"#aec6e8"},
+"n8":{"label":"load","fqn":"io/github/twopit/callgraph/GraphLoader.load().","file":"GraphLoader.scala","cls":"GraphLoader","startLine":15,"endLine":115,"color":"#ffd59e"},
+"n9":{"label":"meta","fqn":"io/github/twopit/callgraph/GraphLoader.FileContrib#meta.","file":"GraphLoader.scala","cls":"GraphLoader","startLine":123,"endLine":123,"color":"#ffd59e"},
+"n10":{"label":"edges","fqn":"io/github/twopit/callgraph/GraphLoader.FileContrib#edges.","file":"GraphLoader.scala","cls":"GraphLoader","startLine":124,"endLine":124,"color":"#ffd59e"},
+"n11":{"label":"kinds","fqn":"io/github/twopit/callgraph/GraphLoader.FileContrib#kinds.","file":"GraphLoader.scala","cls":"GraphLoader","startLine":125,"endLine":125,"color":"#ffd59e"},
+"n12":{"label":"contribCache","fqn":"io/github/twopit/callgraph/GraphLoader.contribCache.","file":"GraphLoader.scala","cls":"GraphLoader","startLine":128,"endLine":128,"color":"#ffd59e"},
+"n13":{"label":"processFile","fqn":"io/github/twopit/callgraph/GraphLoader.processFile().","file":"GraphLoader.scala","cls":"GraphLoader","startLine":131,"endLine":228,"color":"#ffd59e"},
+"n14":{"label":"docsCache","fqn":"io/github/twopit/callgraph/GraphLoader.docsCache.","file":"GraphLoader.scala","cls":"GraphLoader","startLine":234,"endLine":234,"color":"#ffd59e"},
+"n15":{"label":"loadDocs","fqn":"io/github/twopit/callgraph/GraphLoader.loadDocs().","file":"GraphLoader.scala","cls":"GraphLoader","startLine":237,"endLine":245,"color":"#ffd59e"},
+"n16":{"label":"endLineParsed","fqn":"io/github/twopit/callgraph/GraphLoader.endLineParsed().","file":"GraphLoader.scala","cls":"GraphLoader","startLine":254,"endLine":254,"color":"#ffd59e"},
+"n17":{"label":"parseEndLines","fqn":"io/github/twopit/callgraph/GraphLoader.parseEndLines().","file":"GraphLoader.scala","cls":"GraphLoader","startLine":256,"endLine":266,"color":"#ffd59e"},
+"n18":{"label":"isSynthetic","fqn":"io/github/twopit/callgraph/GraphLoader.isSynthetic().","file":"GraphLoader.scala","cls":"GraphLoader","startLine":289,"endLine":291,"color":"#ffd59e"},
+"n19":{"label":"extractSyntheticSymbols","fqn":"io/github/twopit/callgraph/GraphLoader.extractSyntheticSymbols().","file":"GraphLoader.scala","cls":"GraphLoader","startLine":293,"endLine":320,"color":"#ffd59e"},
+"n20":{"label":"overloadSuffix","fqn":"io/github/twopit/callgraph/GraphLoader.overloadSuffix().","file":"GraphLoader.scala","cls":"GraphLoader","startLine":322,"endLine":328,"color":"#ffd59e"},
+"n21":{"label":"main","fqn":"io/github/twopit/callgraph/Main.main().","file":"Main.scala","cls":"Main","startLine":24,"endLine":98,"color":"#f4b8b8"},
+"n22":{"label":"empty","fqn":"io/github/twopit/callgraph/LoadedGraph.empty.","file":"model.scala","cls":"LoadedGraph","startLine":22,"endLine":22,"color":"#b5e0a8"}};
+const edges = [{"from":"n8","to":"n22"},
+{"from":"n7","to":"n4"},
+{"from":"n7","to":"n8"},
+{"from":"n7","to":"n5"},
+{"from":"n8","to":"n13"},
+{"from":"n8","to":"n12"},
+{"from":"n13","to":"n20"},
+{"from":"n8","to":"n10"},
+{"from":"n8","to":"n0"},
+{"from":"n13","to":"n17"},
+{"from":"n8","to":"n16"},
+{"from":"n8","to":"n9"},
+{"from":"n21","to":"n7"},
+{"from":"n7","to":"n1"},
+{"from":"n13","to":"n19"},
+{"from":"n8","to":"n11"},
+{"from":"n7","to":"n2"},
+{"from":"n13","to":"n15"},
+{"from":"n8","to":"n15"},
+{"from":"n13","to":"n18"},
+{"from":"n7","to":"n6"},
+{"from":"n15","to":"n14"},
+{"from":"n7","to":"n3"},
+{"from":"n17","to":"n0"}];
+
+// ---- derived maps ----
+const nodeFile  = {};   // nodeId → className
+const fileNodes = {};   // className → [nodeId]
+Object.entries(meta).forEach(([id, m]) => {
+  nodeFile[id] = m.cls;
+  if (!fileNodes[m.cls]) fileNodes[m.cls] = [];
+  fileNodes[m.cls].push(id);
+});
+const fileNames = Object.keys(fileNodes).sort();
+const groupId   = {};   // className → stable DOT id
+const groupFile = {};   // DOT id   → className
+fileNames.forEach((fn, i) => { groupId[fn] = '__f' + i; groupFile['__f' + i] = fn; });
+
+const collapsedSet      = new Set();  // className → collapsed to group node
+const removedNodes      = new Set();  // nodeId    → explicitly removed
+const removedClasses    = new Set();  // className → all nodes removed
+const collapsedOutgoing = new Set();  // nodeId    → outgoing edges suppressed
+
+// Compute which nodes are visible given current state.
+// A node is orphaned (hidden) when all its incoming paths go through suppressed nodes.
+function computeVisible() {
+  const explicitlyHidden = id => removedNodes.has(id) || removedClasses.has(nodeFile[id]);
+
+  // Edges that are active: source not hidden and not suppressed outgoing
+  const activeEdges = edges.filter(e =>
+    !explicitlyHidden(e.from) && !collapsedOutgoing.has(e.from) && !explicitlyHidden(e.to)
+  );
+
+  // Which nodes have *any* incoming edge in the non-hidden graph (before outgoing suppression)
+  const hasOriginalIn = new Set();
+  edges.forEach(e => {
+    if (!explicitlyHidden(e.from) && !explicitlyHidden(e.to)) hasOriginalIn.add(e.to);
+  });
+
+  // Which nodes have an active incoming edge
+  const hasActiveIn = new Set();
+  activeEdges.forEach(e => hasActiveIn.add(e.to));
+
+  const visible = id => {
+    if (explicitlyHidden(id)) return false;
+    if (collapsedOutgoing.has(id)) return true;  // always show suppressor node itself
+    if (!hasOriginalIn.has(id))    return true;  // source node — always show
+    return hasActiveIn.has(id);
+  };
+
+  return { visible, activeEdges };
+}
+
+// ---- DOT builder ----
+function esc(s) { return s.replace(/\\/g,'\\\\').replace(/"/g,'\\"').replace(/\n/g,'\\n'); }
+
+function buildDot() {
+  const { visible, activeEdges } = computeVisible();
+
+  let dot = 'digraph G {\n  rankdir=LR;\n  bgcolor="#e8e8e8";\n';
+  dot += '  node [shape=box style="filled,rounded" fontname=monospace fontsize=10 fontcolor=black margin="0.2,0.1"];\n';
+  dot += '  edge [color="#4a6fa5"];\n\n';
+
+  let gi = 0;
+  fileNames.forEach(fn => {
+    if (removedClasses.has(fn)) return;
+    const ids = fileNodes[fn].filter(id => visible(id));
+    if (ids.length === 0) return;
+    const color = meta[ids[0]].color;
+    if (collapsedSet.has(fn)) {
+      dot += '  ' + groupId[fn] + ' [label="' + esc(fn) + '\\n(' + ids.length + ')"' +
+             ' fillcolor="' + color + '" penwidth=2];\n';
+    } else {
+      dot += '  subgraph cluster_' + gi + ' {\n';
+      dot += '    label="' + esc(fn) + '";\n    style=rounded;\n';
+      dot += '    color="black";\n';
+      ids.forEach(id => {
+        dot += '    ' + id + ' [label="' + esc(meta[id].label) + '"' +
+               ' fillcolor="' + meta[id].color + '"];\n';
+      });
+      dot += '  }\n\n';
+    }
+    gi++;
+  });
+
+  const seen = new Set();
+  activeEdges.forEach(e => {
+    if (!visible(e.from) || !visible(e.to)) return;
+    const sfn = nodeFile[e.from], tfn = nodeFile[e.to];
+    const ns = (sfn && collapsedSet.has(sfn)) ? groupId[sfn] : e.from;
+    const nt = (tfn && collapsedSet.has(tfn)) ? groupId[tfn] : e.to;
+    if (ns === nt) return;
+    const key = ns + '\x00' + nt;
+    if (seen.has(key)) return;
+    seen.add(key);
+    dot += '  ' + ns + ' -> ' + nt + ';\n';
+  });
+
+  dot += '}\n';
+  return dot;
+}
+
+// ---- rendering ----
+let viz = new Viz(), panZoom;
+
+function render() {
+  selectedNodeEl = null; selectedPanelEl = null;
+  viz.renderSVGElement(buildDot())
+    .then(function(svgEl) {
+      svgEl.style.width  = '100%';
+      svgEl.style.height = '100%';
+      if (panZoom) { panZoom.destroy(); panZoom = null; }
+      const container = document.getElementById('graph');
+      container.innerHTML = '';
+      container.appendChild(svgEl);
+      panZoom = svgPanZoom(svgEl, {
+        zoomEnabled: true, controlIconsEnabled: false,
+        fit: true, center: true, minZoom: 0.01, maxZoom: 30,
+      });
+      bindEvents(svgEl);
+    })
+    .catch(function(e) {
+      viz = new Viz(); // must recreate after error
+      document.getElementById('graph').innerHTML =
+        '<div id="error">DOT render error:\n' + e.message + '</div>';
+    });
+}
+
+// Apply current visibility state to an already-rendered SVG without re-rendering.
+// Used for collapse/expand of outgoing edges (avoids full re-render + flicker).
+function applyVisibilityToDom(svgEl) {
+  const { visible } = computeVisible();
+
+  svgEl.querySelectorAll('g.node').forEach(n => {
+    const t = n.querySelector('title')?.textContent.trim();
+    if (!t) return;
+    if (groupFile[t]) {                      // collapsed-class group node
+      n.style.display = removedClasses.has(groupFile[t]) ? 'none' : '';
+      return;
+    }
+    n.style.display = visible(t) ? '' : 'none';
+  });
+
+  svgEl.querySelectorAll('g.edge').forEach(edgeEl => {
+    const title = edgeEl.querySelector('title')?.textContent.trim() || '';
+    const sep   = title.indexOf('->');
+    if (sep < 0) return;
+    const src = title.substring(0, sep);
+    const tgt = title.substring(sep + 2);
+    const show = visible(src) && visible(tgt) && !collapsedOutgoing.has(src);
+    edgeEl.style.display = show ? '' : 'none';
+  });
+
+  svgEl.querySelectorAll('g.cluster').forEach(clusterEl => {
+    const labelEl = clusterEl.querySelector('text');
+    if (!labelEl) return;
+    const className = labelEl.textContent.trim();
+    clusterEl.style.display = removedClasses.has(className) ? 'none' : '';
+  });
+}
+
+
+function addNodePanel(nodeEl, svgEl, id, isCluster) {
+  const ns         = 'http://www.w3.org/2000/svg';
+  const bbox       = nodeEl.getBBox();
+  const hasToggle  = isCluster || edges.some(e => e.from === id);
+  const panelW     = hasToggle ? 26 : 13;
+  const panelH     = 13;
+  const px         = bbox.x;
+  const py         = bbox.y - panelH - 2;
+
+  const g  = document.createElementNS(ns, 'g');
+  g.style.visibility = 'hidden';
+
+  const bg = document.createElementNS(ns, 'rect');
+  bg.setAttribute('x', px);  bg.setAttribute('y', py);
+  bg.setAttribute('width', panelW);  bg.setAttribute('height', panelH);
+  bg.setAttribute('rx', '3');
+  bg.style.cssText = 'fill:#fff;stroke:#bbb;stroke-width:0.5';
+  g.appendChild(bg);
+
+  const addText = (glyph, cx, color, onClick) => {
+    const t = document.createElementNS(ns, 'text');
+    t.setAttribute('x', px + cx);
+    t.setAttribute('y', py + panelH - 3);
+    t.setAttribute('text-anchor', 'middle');
+    t.style.cssText = 'font-size:10px;font-weight:bold;cursor:pointer;fill:' + color + ';user-select:none';
+    t.textContent = glyph;
+    t.addEventListener('click', e => { e.stopPropagation(); onClick(); });
+    g.appendChild(t);
+  };
+
+  addText('\u00d7', 6, '#c00', () => {
+    if (isCluster) removedClasses.add(id);
+    else           removedNodes.add(id);
+    applyVisibilityToDom(svgEl);
+  });
+
+  if (hasToggle) {
+    const collapsed = isCluster ? collapsedSet.has(id) : collapsedOutgoing.has(id);
+    addText(collapsed ? '\u25b6' : '\u25bc', 20, '#555', () => {
+      if (isCluster) {
+        if (collapsedSet.has(id)) collapsedSet.delete(id); else collapsedSet.add(id);
+        render();
+      } else {
+        if (collapsedOutgoing.has(id)) collapsedOutgoing.delete(id); else collapsedOutgoing.add(id);
+        applyVisibilityToDom(svgEl);
+      }
+    });
+  }
+
+  nodeEl.appendChild(g);
+  return g;
+}
+
+let selectedNodeEl = null, selectedPanelEl = null;
+
+function setSelected(nodeEl, panelEl) {
+  if (selectedNodeEl) {
+    const shape = selectedNodeEl.querySelector('polygon,ellipse');
+    if (shape) { shape.setAttribute('stroke', '#000'); shape.setAttribute('stroke-width', '1'); }
+  }
+  if (selectedPanelEl) selectedPanelEl.style.visibility = 'hidden';
+  selectedNodeEl = nodeEl;
+  selectedPanelEl = panelEl;
+  if (nodeEl) {
+    const shape = nodeEl.querySelector('polygon,ellipse');
+    if (shape) { shape.setAttribute('stroke', '#2255bb'); shape.setAttribute('stroke-width', '2'); }
+  }
+  if (panelEl) panelEl.style.visibility = 'visible';
+}
+
+function bindEvents(svgEl) {
+  selectedNodeEl = null; selectedPanelEl = null;
+
+  svgEl.addEventListener('click', () => setSelected(null, null));
+
+  svgEl.querySelectorAll('g.node').forEach(node => {
+    node.style.cursor = 'pointer';
+    const id = node.querySelector('title')?.textContent.trim();
+    if (!id) return;
+
+    const panel = addNodePanel(node, svgEl, groupFile[id] || id, !!groupFile[id]);
+
+    node.addEventListener('click', e => {
+      e.stopPropagation();
+      setSelected(node, panel);
+      if (groupFile[id]) {
+        document.getElementById('panel').innerHTML =
+          '<div class="row"><div class="lbl">Class</div><div class="val">' + groupFile[id] + '</div></div>' +
+          '<div id="hint">Double-click to expand.</div>';
+      } else if (meta[id]) {
+        const m = meta[id];
+        document.getElementById('panel').innerHTML =
+          '<div class="row"><div class="lbl">Method</div><div class="val">' + m.label + '</div></div>' +
+          '<div class="row"><div class="lbl">FQN</div><div class="val">' + m.fqn + '</div></div>' +
+          '<div class="row"><div class="lbl">File</div><div class="val">' + m.file + '</div></div>' +
+          (m.startLine ? '<div class="row"><div class="lbl">Lines</div><div class="val">' +
+            m.startLine + '\u2013' + m.endLine + '</div></div>' : '');
+      }
+    });
+    node.addEventListener('dblclick', e => {
+      e.stopPropagation();
+      if (groupFile[id])     { collapsedSet.delete(groupFile[id]); render(); }
+      else if (nodeFile[id]) { collapsedSet.add(nodeFile[id]);     render(); }
+    });
+  });
+
+  svgEl.querySelectorAll('g.cluster').forEach(cluster => {
+    const labelEl = cluster.querySelector('text');
+    if (!labelEl) return;
+    const className = labelEl.textContent.trim();
+    if (!fileNodes[className]) return;
+    const panel = addNodePanel(cluster, svgEl, className, true);
+    cluster.style.cursor = 'pointer';
+    cluster.addEventListener('click', e => {
+      e.stopPropagation();
+      setSelected(cluster, panel);
+      document.getElementById('panel').innerHTML =
+        '<div class="row"><div class="lbl">Class</div><div class="val">' + className + '</div></div>';
+    });
+  });
+}
+
+document.getElementById('btnFit').addEventListener('click', () => panZoom && panZoom.fit());
+function restoreAll()  { removedNodes.clear(); removedClasses.clear(); collapsedOutgoing.clear(); render(); }
+function collapseAll() { fileNames.forEach(fn => collapsedSet.add(fn));  render(); }
+function expandAll()   { collapsedSet.clear();                            render(); }
+
+render();
+</script>
+</body>
+</html>

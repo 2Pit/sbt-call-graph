@@ -1,0 +1,125 @@
+{
+  "query": {
+    "vertices": [
+      "io/github/twopit/callgraph/Main.main().",
+      "io/github/twopit/callgraph/QueryEngine.pathsAmong().",
+      "io/github/twopit/callgraph/DotOutput.renderGraph().",
+      "io/github/twopit/callgraph/GraphLoader.parseEndLines().",
+      "json"
+    ]
+  },
+  "found": true,
+  "truncated": false,
+  "nodes": [
+    {
+      "id": "io/github/twopit/callgraph/CallGraphState.getOrLoad().",
+      "displayName": "getOrLoad",
+      "file": "modules/analyzer/src/main/scala/io/github/twopit/callgraph/CallGraphState.scala",
+      "startLine": 16,
+      "endLine": 26
+    },
+    {
+      "id": "io/github/twopit/callgraph/GraphLoader.load().",
+      "displayName": "load",
+      "file": "modules/analyzer/src/main/scala/io/github/twopit/callgraph/GraphLoader.scala",
+      "startLine": 15,
+      "endLine": 115
+    },
+    {
+      "id": "io/github/twopit/callgraph/GraphLoader.processFile().",
+      "displayName": "processFile",
+      "file": "modules/analyzer/src/main/scala/io/github/twopit/callgraph/GraphLoader.scala",
+      "startLine": 131,
+      "endLine": 228
+    },
+    {
+      "id": "io/github/twopit/callgraph/GraphLoader.parseEndLines().",
+      "displayName": "parseEndLines",
+      "file": "modules/analyzer/src/main/scala/io/github/twopit/callgraph/GraphLoader.scala",
+      "startLine": 256,
+      "endLine": 266
+    },
+    {
+      "id": "io/github/twopit/callgraph/Main.main().",
+      "displayName": "main",
+      "file": "modules/analyzer/src/main/scala/io/github/twopit/callgraph/Main.scala",
+      "startLine": 24,
+      "endLine": 98
+    },
+    {
+      "id": "io/github/twopit/callgraph/QueryEngine.pathsAmong().",
+      "displayName": "pathsAmong",
+      "file": "modules/analyzer/src/main/scala/io/github/twopit/callgraph/QueryEngine.scala",
+      "startLine": 11,
+      "endLine": 35
+    }
+  ],
+  "edges": [
+    {
+      "from": "io/github/twopit/callgraph/Main.main().",
+      "to": "io/github/twopit/callgraph/QueryEngine.pathsAmong()."
+    },
+    {
+      "from": "io/github/twopit/callgraph/Main.main().",
+      "to": "io/github/twopit/callgraph/CallGraphState.getOrLoad()."
+    },
+    {
+      "from": "io/github/twopit/callgraph/CallGraphState.getOrLoad().",
+      "to": "io/github/twopit/callgraph/GraphLoader.load()."
+    },
+    {
+      "from": "io/github/twopit/callgraph/GraphLoader.load().",
+      "to": "io/github/twopit/callgraph/GraphLoader.processFile()."
+    },
+    {
+      "from": "io/github/twopit/callgraph/GraphLoader.processFile().",
+      "to": "io/github/twopit/callgraph/GraphLoader.parseEndLines()."
+    }
+  ],
+  "readHints": [
+    {
+      "file": "modules/analyzer/src/main/scala/io/github/twopit/callgraph/CallGraphState.scala",
+      "ranges": [
+        {
+          "start": 16,
+          "end": 26
+        }
+      ]
+    },
+    {
+      "file": "modules/analyzer/src/main/scala/io/github/twopit/callgraph/GraphLoader.scala",
+      "ranges": [
+        {
+          "start": 15,
+          "end": 115
+        },
+        {
+          "start": 131,
+          "end": 228
+        },
+        {
+          "start": 256,
+          "end": 266
+        }
+      ]
+    },
+    {
+      "file": "modules/analyzer/src/main/scala/io/github/twopit/callgraph/Main.scala",
+      "ranges": [
+        {
+          "start": 24,
+          "end": 98
+        }
+      ]
+    },
+    {
+      "file": "modules/analyzer/src/main/scala/io/github/twopit/callgraph/QueryEngine.scala",
+      "ranges": [
+        {
+          "start": 11,
+          "end": 35
+        }
+      ]
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-package io.github.twopit.graphexplorer
+package io.github.twopit.callgraph
 
 import java.nio.file.Path
 import scala.util.matching.Regex
@@ -44,7 +44,7 @@ object HtmlOutput {
   /** Generates JSON-only data for the browser; DOT is built entirely in JS.
     *  Tests can call this directly to inspect the generated HTML.
     */
-  private[graphexplorer] def render(
+  private[callgraph] def render(
       nodes: Set[String],
       edges: Set[(String, String)],
       graph: LoadedGraph,
@@ -133,7 +133,7 @@ object HtmlOutput {
 
   private lazy val rawTemplate: String = {
     val stream = Option(getClass.getResourceAsStream("graph.html"))
-      .getOrElse(sys.error("[graph-explorer] graph.html resource not found"))
+      .getOrElse(sys.error("[call-graph] graph.html resource not found"))
     try scala.io.Source.fromInputStream(stream, "UTF-8").mkString
     finally stream.close()
   }

@@ -1,4 +1,4 @@
-# sbt-graph-explorer
+# sbt-call-graph
 
 An SBT plugin that builds a method-level call graph from SemanticDB and lets you query it without leaving the SBT shell.
 
@@ -14,14 +14,14 @@ An SBT plugin that builds a method-level call graph from SemanticDB and lets you
 Add to your project's `project/plugins.sbt`:
 
 ```scala
-addSbtPlugin("io.github.2pit" % "sbt-graph-explorer" % "<version>")
+addSbtPlugin("io.github.2pit" % "sbt-call-graph" % "<version>")
 ```
 
 Enable on the module you want to analyze in `build.sbt`:
 
 ```scala
 lazy val myModule = project
-  .enablePlugins(GraphExplorerPlugin)
+  .enablePlugins(CallGraphPlugin)
 ```
 
 SemanticDB generation must be enabled (already the case if you use scalafix):

@@ -2,7 +2,7 @@ addCommandAlias("pub", """set ThisBuild / version := "0.1.0-SNAPSHOT"; analyzer/
 addCommandAlias("fmt", "scalafmtAll; scalafmtSbt")
 addCommandAlias(
   "selfVia",
-  "analyzer/graphVia io/github/twopit/graphexplorer/CallGraphState.main(). --format html --depthOut 10 --depthIn 1",
+  "analyzer/graphVia io/github/twopit/callgraph/CallGraphState.main(). --format html --depthOut 10 --depthIn 1",
 )
 
 ThisBuild / organization := "io.github.2pit"
@@ -11,9 +11,9 @@ ThisBuild / scalaVersion := "2.12.20"
 // scalameta 4.x is published for both 2.12 and 2.13
 lazy val analyzer = project
   .in(file("modules/analyzer"))
-//  .enablePlugins(GraphExplorerPlugin)
+//  .enablePlugins(CallGraphPlugin)
   .settings(
-    name              := "graph-explorer-analyzer",
+    name              := "call-graph-analyzer",
     semanticdbEnabled := true,
     libraryDependencies ++= Seq(
       "org.scalameta" %% "scalameta" % "4.8.14",
@@ -26,7 +26,7 @@ lazy val plugin = project
   .dependsOn(analyzer)
   .enablePlugins(ScriptedPlugin)
   .settings(
-    name                := "sbt-graph-explorer",
+    name                := "sbt-call-graph",
     sbtPlugin           := true,
     scriptedLaunchOpts ++= Seq("-Xmx1g", s"-Dplugin.version=${version.value}"),
     scriptedBufferLog   := false,
@@ -36,6 +36,6 @@ lazy val root = project
   .in(file("."))
   .aggregate(analyzer, plugin)
   .settings(
-    name           := "sbt-graph-explorer-root",
+    name           := "sbt-call-graph-root",
     publish / skip := true,
   )

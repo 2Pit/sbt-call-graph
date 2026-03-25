@@ -1,4 +1,4 @@
-package io.github.twopit.graphexplorer
+package io.github.twopit.callgraph
 
 import scala.meta._
 import scala.meta.internal.semanticdb._
@@ -26,9 +26,9 @@ object GraphLoader {
 
     if (files.isEmpty) {
       System.err.println(
-        s"[graph-explorer] WARNING: no .semanticdb files found under: ${semanticdbRoots.mkString(", ")}"
+        s"[call-graph] WARNING: no .semanticdb files found under: ${semanticdbRoots.mkString(", ")}"
       )
-      System.err.println(s"[graph-explorer] Run 'compile' first.")
+      System.err.println(s"[call-graph] Run 'compile' first.")
       return LoadedGraph.empty
     }
 
@@ -77,7 +77,7 @@ object GraphLoader {
           Some(contrib)
         } catch {
           case e: Exception =>
-            System.err.println(s"[graph-explorer] WARNING: failed to parse $path: ${e.getMessage}")
+            System.err.println(s"[call-graph] WARNING: failed to parse $path: ${e.getMessage}")
             None
         }
       }
@@ -97,7 +97,7 @@ object GraphLoader {
 
     if (outB.isEmpty)
       System.err.println(
-        s"[graph-explorer] WARNING: graph is empty after loading ${files.size} files."
+        s"[call-graph] WARNING: graph is empty after loading ${files.size} files."
       )
 
     val elapsed = System.currentTimeMillis() - t0

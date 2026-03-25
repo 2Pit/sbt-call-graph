@@ -1,4 +1,4 @@
-package io.github.twopit.graphexplorer
+package io.github.twopit.callgraph
 
 import sbt._
 import sbt.Keys._
@@ -6,7 +6,7 @@ import sbt.complete.DefaultParsers._
 import java.nio.file.Path
 import scala.util.matching.Regex
 
-object GraphExplorerPlugin extends AutoPlugin {
+object CallGraphPlugin extends AutoPlugin {
   override def trigger = noTrigger
 
   object autoImport {

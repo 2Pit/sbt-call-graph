@@ -1,4 +1,4 @@
-package io.github.twopit.graphexplorer
+package io.github.twopit.callgraph
 
 /** Metadata for a single graph vertex (method). */
 final case class NodeMeta(
@@ -34,7 +34,7 @@ object GraphResult {
 }
 
 /** Sort a collection of node FQNs by source location (file asc, startLine asc). */
-private[graphexplorer] object NodeSort {
+private[callgraph] object NodeSort {
   def byLocation(ids: Iterable[String], meta: Map[String, NodeMeta]): Seq[String] =
     ids.toSeq.sortBy(id => meta.get(id).map(m => (m.file, m.startLine)).getOrElse(("", 0)))
 }

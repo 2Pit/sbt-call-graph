@@ -1,4 +1,4 @@
-# sbt-graph-explorer — Usage Guide
+# sbt-call-graph — Usage Guide
 
 SBT plugin for building a call graph of a Scala project and navigating it via `sbtn` commands.
 
@@ -11,14 +11,14 @@ SBT plugin for building a call graph of a Scala project and navigating it via `s
 `project/plugins.sbt`:
 
 ```scala
-addSbtPlugin("io.github.2pit" % "sbt-graph-explorer" % "<version>")
+addSbtPlugin("io.github.2pit" % "sbt-call-graph" % "<version>")
 ```
 
 `build.sbt` — enable on the module you want to analyze:
 
 ```scala
 lazy val myModule = project
-  .enablePlugins(GraphExplorerPlugin)
+  .enablePlugins(CallGraphPlugin)
 ```
 
 ### 2. Enable SemanticDB

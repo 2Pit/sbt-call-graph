@@ -1,4 +1,4 @@
-package io.github.twopit.graphexplorer
+package io.github.twopit.callgraph
 
 final case class ModuleEdge(srcId: String, tgtId: String)
 final case class ModuleResult(outgoing: Seq[ModuleEdge], incoming: Seq[ModuleEdge])

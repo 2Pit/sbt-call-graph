@@ -1,6 +1,6 @@
 # call-graph — Claude Skill Guide
 
-Use the `sbt-graph-explorer` plugin to navigate the call graph of any Scala project when you need to understand how methods relate without reading entire files.
+Use the `sbt-call-graph` plugin to navigate the call graph of any Scala project when you need to understand how methods relate without reading entire files.
 
 The plugin loads SemanticDB from **all enabled modules** automatically — no need to switch projects.
 
@@ -11,12 +11,12 @@ The plugin loads SemanticDB from **all enabled modules** automatically — no ne
 **User mentions a single method or class**
 → Run `graphVia` to see what calls it and what it calls.
 > "Why is `QueryEngine#viaVertex` returning empty results?"
-> → `graphVia io/github/twopit/graphexplorer/QueryEngine.viaVertex().` shows the neighbourhood of that method.
+> → `graphVia io/github/twopit/callgraph/QueryEngine.viaVertex().` shows the neighbourhood of that method.
 
 **User mentions multiple methods or asks about data/control flow**
 → Run `graphPath` to find how methods reach each other. Accepts 2 or more vertices — paths are found between all pairs.
 > "How does the graph loading flow into the query engine?"
-> → `graphPath io/github/twopit/graphexplorer/GraphLoader.load(+1). io/github/twopit/graphexplorer/QueryEngine.viaVertex().`
+> → `graphPath io/github/twopit/callgraph/GraphLoader.load(+1). io/github/twopit/callgraph/QueryEngine.viaVertex().`
 
 **User wants to refactor or split a component**
 → Run `graphVia` on each candidate method. The number of edges pointing in (fan-in) shows how many callers depend on it; edges pointing out (fan-out) show how much it owns.
@@ -40,12 +40,12 @@ SemanticDB symbol format: `package/ClassOrObject#method().`
 
 | Element        | Separator | Example                                    |
 |----------------|-----------|--------------------------------------------|
-| Package        | `/`       | `io/github/twopit/graphexplorer/`          |
+| Package        | `/`       | `io/github/twopit/callgraph/`          |
 | Object         | `.`       | `GraphLoader.`                             |
 | Class / Trait  | `#`       | `QueryEngine#`                             |
 | Method         | `().`     | `viaVertex().`                             |
 
-Full example: `io/github/twopit/graphexplorer/QueryEngine.viaVertex().`
+Full example: `io/github/twopit/callgraph/QueryEngine.viaVertex().`
 
 **If the exact FQN is unknown:**
 1. Run `graphSearch <name>` — returns all vertices whose FQN or displayName contains the substring.
@@ -67,16 +67,16 @@ myModule/graphSearch GraphLoader
 myModule/graphSearch GraphLoader --maxResults 20
 
 # neighbourhood of a method (default --depth 2 in both directions)
-myModule/graphVia io/github/twopit/graphexplorer/QueryEngine.viaVertex().
+myModule/graphVia io/github/twopit/callgraph/QueryEngine.viaVertex().
 
 # asymmetric depth: 3 hops for callers, 1 hop for callees
-myModule/graphVia io/github/twopit/graphexplorer/QueryEngine.viaVertex(). --depthIn 3 --depthOut 1
+myModule/graphVia io/github/twopit/callgraph/QueryEngine.viaVertex(). --depthIn 3 --depthOut 1
 
 # deeper exploration, same depth in both directions
-myModule/graphVia io/github/twopit/graphexplorer/QueryEngine.viaVertex(). --depth 4
+myModule/graphVia io/github/twopit/callgraph/QueryEngine.viaVertex(). --depth 4
 
 # path between two methods
-myModule/graphPath io/github/twopit/graphexplorer/GraphLoader.load(+1). io/github/twopit/graphexplorer/CallGraphState.getOrLoad().
+myModule/graphPath io/github/twopit/callgraph/GraphLoader.load(+1). io/github/twopit/callgraph/CallGraphState.getOrLoad().
 
 # path among 3+ methods (finds paths between all pairs)
 myModule/graphPath A B C --maxDepth 15 --maxPaths 50
@@ -91,7 +91,7 @@ myModule/graphModule modules/plugin
 All query commands (`graphPath`, `graphVia`) support `--format`:
 
 ```
-myModule/graphVia io/github/twopit/graphexplorer/QueryEngine.viaVertex(). --format html
+myModule/graphVia io/github/twopit/callgraph/QueryEngine.viaVertex(). --format html
 myModule/graphPath A B --format md
 ```
 
@@ -107,7 +107,7 @@ myModule/graphPath A B --format md
 Use `--filterOut` to exclude nodes matching regex patterns (comma-separated):
 
 ```
-myModule/graphVia io/github/twopit/graphexplorer/QueryEngine.viaVertex(). --filterOut "io/github/twopit/graphexplorer/Output.*"
+myModule/graphVia io/github/twopit/callgraph/QueryEngine.viaVertex(). --filterOut "io/github/twopit/callgraph/Output.*"
 ```
 
 Each command triggers incremental compilation automatically before querying.
@@ -143,16 +143,16 @@ Both `graphVia` and `graphPath` return the same structure — a flat list of nod
 
 ```json
 {
-  "query":     { "vertex": "io/github/twopit/graphexplorer/QueryEngine.viaVertex().", "depthIn": 2, "depthOut": 2 },
+  "query":     { "vertex": "io/github/twopit/callgraph/QueryEngine.viaVertex().", "depthIn": 2, "depthOut": 2 },
   "found":     true,
   "truncated": false,
   "nodes": [
-    { "id": "io/github/twopit/graphexplorer/QueryEngine.viaVertex().", "displayName": "viaVertex", "file": "modules/analyzer/.../QueryEngine.scala", "startLine": 40, "endLine": 55 },
-    { "id": "io/github/twopit/graphexplorer/QueryEngine.search().", "displayName": "search", "file": "...", "startLine": 59, "endLine": 65 },
+    { "id": "io/github/twopit/callgraph/QueryEngine.viaVertex().", "displayName": "viaVertex", "file": "modules/analyzer/.../QueryEngine.scala", "startLine": 40, "endLine": 55 },
+    { "id": "io/github/twopit/callgraph/QueryEngine.search().", "displayName": "search", "file": "...", "startLine": 59, "endLine": 65 },
     ...
   ],
   "edges": [
-    { "from": "io/github/twopit/graphexplorer/QueryEngine.viaVertex().", "to": "io/github/twopit/graphexplorer/QueryEngine.search()." },
+    { "from": "io/github/twopit/callgraph/QueryEngine.viaVertex().", "to": "io/github/twopit/callgraph/QueryEngine.search()." },
     ...
   ]
 }
@@ -187,8 +187,8 @@ Read(hint.file, offset = range.start - 1, limit = range.end - range.start + 1)
   "query":   "GraphLoader",
   "count":   2,
   "matches": [
-    { "id": "io/github/twopit/graphexplorer/GraphLoader.", "displayName": "GraphLoader", "file": "modules/analyzer/.../GraphLoader.scala", "startLine": 8, "endLine": 8 },
-    { "id": "io/github/twopit/graphexplorer/GraphLoader.load(+1).", "displayName": "load", "file": "...", "startLine": 15, "endLine": 15 }
+    { "id": "io/github/twopit/callgraph/GraphLoader.", "displayName": "GraphLoader", "file": "modules/analyzer/.../GraphLoader.scala", "startLine": 8, "endLine": 8 },
+    { "id": "io/github/twopit/callgraph/GraphLoader.load(+1).", "displayName": "load", "file": "...", "startLine": 15, "endLine": 15 }
   ]
 }
 ```
@@ -201,13 +201,13 @@ Use the `id` from a match as the vertex argument in `graphVia` or `graphPath`.
 {
   "query": { "prefix": "modules/analyzer" },
   "outgoing": [
-    { "from": { "id": "io/github/twopit/graphexplorer/GraphLoader.load(+1).", ... },
+    { "from": { "id": "io/github/twopit/callgraph/GraphLoader.load(+1).", ... },
       "to":   { "id": "scala/meta/internal/semanticdb/TextDocuments.parseFrom().", ... } },
     ...
   ],
   "incoming": [
-    { "from": { "id": "io/github/twopit/graphexplorer/GraphExplorerPlugin.graphViaTask().", ... },
-      "to":   { "id": "io/github/twopit/graphexplorer/CallGraphState.getOrLoad().", ... } },
+    { "from": { "id": "io/github/twopit/callgraph/CallGraphPlugin.graphViaTask().", ... },
+      "to":   { "id": "io/github/twopit/callgraph/CallGraphState.getOrLoad().", ... } },
     ...
   ]
 }

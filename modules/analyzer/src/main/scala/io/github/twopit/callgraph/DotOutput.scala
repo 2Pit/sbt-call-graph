@@ -1,4 +1,4 @@
-package io.github.twopit.graphexplorer
+package io.github.twopit.callgraph
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
@@ -19,7 +19,7 @@ object DotOutput {
     write(outFile, render(fn, fe, graph, title))
   }
 
-  private[graphexplorer] def applyFilter(
+  private[callgraph] def applyFilter(
       nodes: Set[String],
       edges: Set[(String, String)],
       filterOut: Seq[Regex],
@@ -33,27 +33,27 @@ object DotOutput {
   /** Extract class/object name from a SemanticDB FQN.
     *  "a/Foo#compute()." → "Foo",  "a/Bar.method()." → "Bar"
     */
-  private[graphexplorer] def classFromFqn(fqn: String): String = {
+  private[callgraph] def classFromFqn(fqn: String): String = {
     val afterSlash = fqn.substring(fqn.lastIndexOf('/') + 1)
     val sepIdx     = afterSlash.indexWhere(c => c == '#' || c == '.')
     if (sepIdx > 0) afterSlash.substring(0, sepIdx) else afterSlash
   }
 
   /** Shared graph layout used by HtmlOutput and MermaidOutput. */
-  private[graphexplorer] case class GraphData(
+  private[callgraph] case class GraphData(
       sorted: Seq[String],
       idOf: Map[String, String],
       byGroup: Map[String, Seq[String]], // class name → FQNs
   )
 
-  private[graphexplorer] def prepareData(nodes: Set[String], graph: LoadedGraph): GraphData = {
+  private[callgraph] def prepareData(nodes: Set[String], graph: LoadedGraph): GraphData = {
     val sorted  = NodeSort.byLocation(nodes, graph.meta)
     val idOf    = sorted.zipWithIndex.map { case (fqn, i) => fqn -> s"n$i" }.toMap
     val byGroup = sorted.groupBy(fqn => classFromFqn(fqn))
     GraphData(sorted, idOf, byGroup)
   }
 
-  private[graphexplorer] def renderGraph(
+  private[callgraph] def renderGraph(
       data: GraphData,
       edges: Set[(String, String)],
       graph: LoadedGraph,
@@ -92,10 +92,10 @@ object DotOutput {
   private def render(nodes: Set[String], edges: Set[(String, String)], graph: LoadedGraph, title: String): String =
     renderGraph(prepareData(nodes, graph), edges, graph, title)
 
-  private[graphexplorer] def dq(s: String): String =
+  private[callgraph] def dq(s: String): String =
     "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n") + "\""
 
-  private[graphexplorer] def write(path: Path, content: String): Path = {
+  private[callgraph] def write(path: Path, content: String): Path = {
     Files.createDirectories(path.getParent)
     Files.write(path, content.getBytes(StandardCharsets.UTF_8))
     path

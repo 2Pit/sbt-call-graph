@@ -1,4 +1,4 @@
-package io.github.twopit.graphexplorer
+package io.github.twopit.callgraph
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Paths}
@@ -92,7 +92,7 @@ object Main {
         println(written.toAbsolutePath.toString)
 
       case other =>
-        System.err.println(s"[graph-explorer] unknown command: ${other.mkString(" ")}")
+        System.err.println(s"[call-graph] unknown command: ${other.mkString(" ")}")
         sys.exit(1)
     }
   }

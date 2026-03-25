@@ -2,13 +2,13 @@ scalaVersion      := "2.13.14"
 semanticdbEnabled := true
 semanticdbVersion := scalafixSemanticdb.revision
 
-enablePlugins(GraphExplorerPlugin)
+enablePlugins(CallGraphPlugin)
 
 val graphCheck = taskKey[Unit]("Assert expected call-graph edges from compiled semanticdb")
 graphCheck := {
   val _ = (Compile / compile).value
   val roots = graphSemanticdbRoots.value
-  val graph = io.github.twopit.graphexplorer.GraphLoader.load(roots)
+  val graph = io.github.twopit.callgraph.GraphLoader.load(roots)
 
   def assertEdge(from: String, to: String): Unit =
     if (!graph.out.getOrElse(from, Set.empty).contains(to))

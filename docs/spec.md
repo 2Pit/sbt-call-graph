@@ -1,4 +1,4 @@
-# Task: sbt-graph-explorer
+# Task: sbt-call-graph
 
 **Date:** 2026-03-03
 **Status:** spec (phases 1–6 complete)

@@ -1,4 +1,4 @@
-# Development Plan: sbt-graph-explorer
+# Development Plan: sbt-call-graph
 
 **Date:** 2026-03-04
 

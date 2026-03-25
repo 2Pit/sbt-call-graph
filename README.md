@@ -87,12 +87,12 @@ Command-line flags always take priority over settings.
 
 Vertices use the SemanticDB symbol format:
 
-| Element       | Separator | Example            |
-|---------------|-----------|--------------------|
-| Package       | `/`       | `com/example/`     |
-| Object        | `.`       | `MyObject.`        |
-| Class / Trait  | `#`       | `MyClass#`         |
-| Method        | `().`     | `myMethod().`      |
+| Element       | Separator | Example        |
+|---------------|-----------|----------------|
+| Package       | `/`       | `com/example/` |
+| Object        | `.`       | `MyObject.`    |
+| Class / Trait | `#`       | `MyClass#`     |
+| Method        | `().`     | `myMethod().`  |
 
 Full example: `com/example/MyClass#myMethod().`
 

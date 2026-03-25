@@ -1,8 +1,8 @@
 # call-graph — Claude Skill Guide
 
-Use the `sbt-graph-explorer` plugin to navigate the call graph of `blank-slate-server` when you need to understand how methods relate without reading entire files.
+Use the `sbt-graph-explorer` plugin to navigate the call graph of any Scala project when you need to understand how methods relate without reading entire files.
 
-The plugin loads SemanticDB from **all modules** (`srs-study-ws`, `srs-common`, etc.) automatically — no need to switch projects.
+The plugin loads SemanticDB from **all enabled modules** automatically — no need to switch projects.
 
 ---
 
@@ -10,13 +10,13 @@ The plugin loads SemanticDB from **all modules** (`srs-study-ws`, `srs-common`, 
 
 **User mentions a single method or class**
 → Run `graphVia` to see what calls it and what it calls.
-> "Why is `SessionLive#close` sometimes not invoked?"
-> → `graphVia sreo/session/SessionLive#close().` shows the neighbourhood of that method.
+> "Why is `QueryEngine#viaVertex` returning empty results?"
+> → `graphVia io/github/twopit/graphexplorer/QueryEngine.viaVertex().` shows the neighbourhood of that method.
 
 **User mentions multiple methods or asks about data/control flow**
 → Run `graphPath` to find how methods reach each other. Accepts 2 or more vertices — paths are found between all pairs.
-> "How does the API request get to the database?"
-> → `graphPath sreo/ws/RoutesLive#sessionRoute(). sreo/session/SessionRepository#close().`
+> "How does the graph loading flow into the query engine?"
+> → `graphPath io/github/twopit/graphexplorer/GraphLoader.load(+1). io/github/twopit/graphexplorer/QueryEngine.viaVertex().`
 
 **User wants to refactor or split a component**
 → Run `graphVia` on each candidate method. The number of edges pointing in (fan-in) shows how many callers depend on it; edges pointing out (fan-out) show how much it owns.
@@ -26,11 +26,11 @@ The plugin loads SemanticDB from **all modules** (`srs-study-ws`, `srs-common`, 
 
 **FQN is unknown / vertex was not found**
 → Run `graphSearch` with a class or method name substring to find the correct FQN.
-> `graphSearch ScheduleRepositoryLive` returns all matching vertices with their IDs.
+> `graphSearch GraphLoader` returns all matching vertices with their IDs.
 
 **Analysing cross-module coupling**
 → Run `graphModule` with a path prefix to see all call edges that cross the module boundary.
-> `graphModule db/db-learning` shows what db-learning calls outside itself and who calls into it.
+> `graphModule modules/analyzer` shows what the analyzer module calls outside itself and who calls into it.
 
 ---
 
@@ -38,14 +38,14 @@ The plugin loads SemanticDB from **all modules** (`srs-study-ws`, `srs-common`, 
 
 SemanticDB symbol format: `package/ClassOrObject#method().`
 
-| Element        | Separator | Example              |
-|----------------|-----------|----------------------|
-| Package        | `/`       | `sreo/session/`      |
-| Object         | `.`       | `SessionLive.`       |
-| Class / Trait  | `#`       | `SessionLive#`       |
-| Method         | `().`     | `close().`           |
+| Element        | Separator | Example                                    |
+|----------------|-----------|--------------------------------------------|
+| Package        | `/`       | `io/github/twopit/graphexplorer/`          |
+| Object         | `.`       | `GraphLoader.`                             |
+| Class / Trait  | `#`       | `QueryEngine#`                             |
+| Method         | `().`     | `viaVertex().`                             |
 
-Full example: `sreo/session/SessionLive#close().`
+Full example: `io/github/twopit/graphexplorer/QueryEngine.viaVertex().`
 
 **If the exact FQN is unknown:**
 1. Run `graphSearch <name>` — returns all vertices whose FQN or displayName contains the substring.
@@ -56,34 +56,34 @@ Full example: `sreo/session/SessionLive#close().`
 
 ## Commands
 
-All commands are run inside the `blank-slate-server` sbt shell:
+All commands are run inside the SBT shell on the module with the plugin enabled:
 
 ```
 # check graph is loaded (node/edge counts)
-studyWs/graphIndex
+myModule/graphIndex
 
 # search for a vertex by class/method name (use when FQN is unknown)
-studyWs/graphSearch ScheduleRepositoryLive
-studyWs/graphSearch ScheduleRepositoryLive --maxResults 20
+myModule/graphSearch GraphLoader
+myModule/graphSearch GraphLoader --maxResults 20
 
 # neighbourhood of a method (default --depth 2 in both directions)
-studyWs/graphVia sreo/session/SessionLive#close().
+myModule/graphVia io/github/twopit/graphexplorer/QueryEngine.viaVertex().
 
 # asymmetric depth: 3 hops for callers, 1 hop for callees
-studyWs/graphVia sreo/session/SessionLive#close(). --depthIn 3 --depthOut 1
+myModule/graphVia io/github/twopit/graphexplorer/QueryEngine.viaVertex(). --depthIn 3 --depthOut 1
 
 # deeper exploration, same depth in both directions
-studyWs/graphVia sreo/session/SessionLive#close(). --depth 4
+myModule/graphVia io/github/twopit/graphexplorer/QueryEngine.viaVertex(). --depth 4
 
 # path between two methods
-studyWs/graphPath sreo/session/SessionLive#closeOnResult(). sreo/session/SessionLive#closeSession().
+myModule/graphPath io/github/twopit/graphexplorer/GraphLoader.load(+1). io/github/twopit/graphexplorer/CallGraphState.getOrLoad().
 
 # path among 3+ methods (finds paths between all pairs)
-studyWs/graphPath A B C --maxDepth 15 --maxPaths 50
+myModule/graphPath A B C --maxDepth 15 --maxPaths 50
 
 # cross-module coupling: all call edges crossing a module boundary
-studyWs/graphModule db/db-learning
-studyWs/graphModule db/db-reporting
+myModule/graphModule modules/analyzer
+myModule/graphModule modules/plugin
 ```
 
 ### Output formats
@@ -91,8 +91,8 @@ studyWs/graphModule db/db-reporting
 All query commands (`graphPath`, `graphVia`) support `--format`:
 
 ```
-studyWs/graphVia sreo/session/SessionLive#close(). --format html
-studyWs/graphPath A B --format md
+myModule/graphVia io/github/twopit/graphexplorer/QueryEngine.viaVertex(). --format html
+myModule/graphPath A B --format md
 ```
 
 | Format   | Flag             | Description                              |
@@ -107,7 +107,7 @@ studyWs/graphPath A B --format md
 Use `--filterOut` to exclude nodes matching regex patterns (comma-separated):
 
 ```
-studyWs/graphVia sreo/session/SessionLive#close(). --filterOut "sreo/db/.*,sreo/tkl/.*"
+myModule/graphVia io/github/twopit/graphexplorer/QueryEngine.viaVertex(). --filterOut "io/github/twopit/graphexplorer/Output.*"
 ```
 
 Each command triggers incremental compilation automatically before querying.
@@ -135,7 +135,7 @@ If the project fails to compile, the plugin **still runs the query** against the
 
 ## Reading the result
 
-Result file: `blank-slate-server/srs-study-ws/target/call-graph/N.json` (N increments each call, never overwritten)
+Result file: `target/call-graph/N.json` (N increments each call, never overwritten)
 
 ### Unified output format (graphVia / graphPath)
 
@@ -143,16 +143,16 @@ Both `graphVia` and `graphPath` return the same structure — a flat list of nod
 
 ```json
 {
-  "query":     { "vertex": "sreo/session/SessionLive#close().", "depthIn": 2, "depthOut": 2 },
+  "query":     { "vertex": "io/github/twopit/graphexplorer/QueryEngine.viaVertex().", "depthIn": 2, "depthOut": 2 },
   "found":     true,
   "truncated": false,
   "nodes": [
-    { "id": "sreo/session/SessionLive#close().", "displayName": "close", "file": "srs-study-ws/.../SessionLive.scala", "startLine": 105, "endLine": 110 },
-    { "id": "sreo/session/SessionLive#closeSession().", "displayName": "closeSession", "file": "...", "startLine": 92, "endLine": 98 },
+    { "id": "io/github/twopit/graphexplorer/QueryEngine.viaVertex().", "displayName": "viaVertex", "file": "modules/analyzer/.../QueryEngine.scala", "startLine": 40, "endLine": 55 },
+    { "id": "io/github/twopit/graphexplorer/QueryEngine.search().", "displayName": "search", "file": "...", "startLine": 59, "endLine": 65 },
     ...
   ],
   "edges": [
-    { "from": "sreo/session/SessionLive#close().", "to": "sreo/session/SessionLive#closeSession()." },
+    { "from": "io/github/twopit/graphexplorer/QueryEngine.viaVertex().", "to": "io/github/twopit/graphexplorer/QueryEngine.search()." },
     ...
   ]
 }
@@ -172,23 +172,23 @@ For `graphPath`, the query field contains `"vertices"` instead of `"vertex"`:
 **To read relevant source**, use `readHints` instead of reading each node individually:
 ```json
 "readHints": [
-  { "file": "srs-study-ws/.../SessionLive.scala",
-    "ranges": [ {"start": 92, "end": 120}, {"start": 145, "end": 160} ] }
+  { "file": "modules/analyzer/.../QueryEngine.scala",
+    "ranges": [ {"start": 40, "end": 65}, {"start": 110, "end": 130} ] }
 ]
 ```
 ```
-Read("blank-slate-server/" + hint.file, offset = range.start - 1, limit = range.end - range.start + 1)
+Read(hint.file, offset = range.start - 1, limit = range.end - range.start + 1)
 ```
 
 ### graphSearch response
 
 ```json
 {
-  "query":   "ScheduleRepositoryLive",
+  "query":   "GraphLoader",
   "count":   2,
   "matches": [
-    { "id": "sreo/db/repository/ScheduleRepositoryLive#.", "displayName": "ScheduleRepositoryLive", "file": "db/db-learning/.../ScheduleRepositoryLive.scala", "startLine": 12, "endLine": 12 },
-    { "id": "sreo/db/repository/ScheduleRepositoryLayer#.", "displayName": "ScheduleRepositoryLayer", "file": "...", "startLine": 5, "endLine": 5 }
+    { "id": "io/github/twopit/graphexplorer/GraphLoader.", "displayName": "GraphLoader", "file": "modules/analyzer/.../GraphLoader.scala", "startLine": 8, "endLine": 8 },
+    { "id": "io/github/twopit/graphexplorer/GraphLoader.load(+1).", "displayName": "load", "file": "...", "startLine": 15, "endLine": 15 }
   ]
 }
 ```
@@ -199,15 +199,15 @@ Use the `id` from a match as the vertex argument in `graphVia` or `graphPath`.
 
 ```json
 {
-  "query": { "prefix": "db/db-learning" },
+  "query": { "prefix": "modules/analyzer" },
   "outgoing": [
-    { "from": { "id": "sreo/db/repository/ScheduleRepositoryLive#scheduleForUser().", ... },
-      "to":   { "id": "sreo/db/query/PartnerQ.getByUser().", ... } },
+    { "from": { "id": "io/github/twopit/graphexplorer/GraphLoader.load(+1).", ... },
+      "to":   { "id": "scala/meta/internal/semanticdb/TextDocuments.parseFrom().", ... } },
     ...
   ],
   "incoming": [
-    { "from": { "id": "sreo/session/SessionLive#open().", ... },
-      "to":   { "id": "sreo/db/repository/ScheduleRepositoryLive#find().", ... } },
+    { "from": { "id": "io/github/twopit/graphexplorer/GraphExplorerPlugin.graphViaTask().", ... },
+      "to":   { "id": "io/github/twopit/graphexplorer/CallGraphState.getOrLoad().", ... } },
     ...
   ]
 }

@@ -78,6 +78,21 @@ object JsonOutput {
     obj(fields: _*)
   }
 
+  /** Index renderer that distinguishes "not compiled" (no .semanticdb) from
+    * "compiled but empty graph". Used by the MCP server; the SBT plugin uses
+    * the simpler 3-arg form above.
+    */
+  def renderIndex(graph: LoadedGraph, status: String, notCompiled: Boolean, emptyGraph: Boolean): String = {
+    val fields = Seq(
+      "status"      -> str(status),
+      "nodes"       -> graph.nodeCount.toString,
+      "edges"       -> graph.edgeCount.toString,
+      "notCompiled" -> notCompiled.toString,
+      "emptyGraph"  -> emptyGraph.toString,
+    )
+    obj(fields: _*)
+  }
+
   // ---------------------------------------------------------------------------
   // Write (render + write to file)
   // ---------------------------------------------------------------------------

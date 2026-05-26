@@ -30,6 +30,11 @@ sbt-graph-exporter/
         CallGraphPlugin.scala    <- AutoPlugin with graphPath/graphVia/graphSearch/graphModule/graphIndex tasks
       src/sbt-test/
         call-graph/basic/            <- scripted test
+    mcp-server/                      <- MCP server Scala 2.12 (depends on analyzer)
+      src/main/scala/io/github/twopit/callgraph/mcp/
+        Main.scala               <- entry point, stdio transport, McpServer wiring
+        GraphService.scala       <- semanticdb-dir discovery + mtime stamp -> CallGraphState
+        ToolHandlers.scala       <- five SyncToolSpecifications (graphIndex/Search/Via/Path/Module)
   docs/
     call-graph.md                    <- Claude Skill guide (usage reference)
     spec.md                          <- original requirements and architecture
@@ -56,6 +61,12 @@ sbtn "analyzer/publishLocal; plugin/scripted"
 
 # standalone CLI (demo HTML graph)
 sbtn "analyzer/run demo graph-demo.html"
+
+# build MCP-server fat-jar (-> modules/mcp-server/target/scala-2.12/call-graph-mcp.jar)
+sbtn "mcpServer/assembly"
+
+# run MCP-server tests
+sbtn "mcpServer/test"
 ```
 
 ---

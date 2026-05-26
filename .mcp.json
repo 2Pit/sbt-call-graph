@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "call-graph": {
+      "command": "java",
+      "args": [
+        "-jar",
+        "modules/mcp-server/target/scala-2.12/call-graph-mcp.jar",
+        "--root",
+        "."
+      ]
+    }
+  }
+}

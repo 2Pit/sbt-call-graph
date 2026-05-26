@@ -45,9 +45,37 @@ lazy val plugin = project
     scriptedBufferLog   := false,
   )
 
+lazy val mcpServer = project
+  .in(file("modules/mcp-server"))
+  .dependsOn(analyzer)
+  .enablePlugins(BuildInfoPlugin)
+  .settings(
+    name              := "call-graph-mcp",
+    publish / skip    := true,
+    semanticdbEnabled := true,
+    libraryDependencies ++= Seq(
+      "io.modelcontextprotocol.sdk" % "mcp"   % "1.1.3",
+      "org.scalameta"              %% "munit" % "0.7.29" % Test,
+    ),
+    buildInfoKeys              := Seq[BuildInfoKey](version),
+    buildInfoPackage           := "io.github.twopit.callgraph.mcp",
+    buildInfoObject            := "BuildVersion",
+    assembly / mainClass       := Some("io.github.twopit.callgraph.mcp.Main"),
+    assembly / assemblyJarName := "call-graph-mcp.jar",
+    assembly / assemblyMergeStrategy := {
+      case PathList("META-INF", "MANIFEST.MF")                                        => MergeStrategy.discard
+      case PathList("META-INF", xs @ _*) if xs.exists(_.toLowerCase.endsWith(".sf"))  => MergeStrategy.discard
+      case PathList("META-INF", xs @ _*) if xs.exists(_.toLowerCase.endsWith(".dsa")) => MergeStrategy.discard
+      case PathList("META-INF", xs @ _*) if xs.exists(_.toLowerCase.endsWith(".rsa")) => MergeStrategy.discard
+      case PathList("module-info.class")                                              => MergeStrategy.discard
+      case x if x.endsWith("/module-info.class")                                      => MergeStrategy.discard
+      case _                                                                          => MergeStrategy.first
+    },
+  )
+
 lazy val root = project
   .in(file("."))
-  .aggregate(analyzer, plugin)
+  .aggregate(analyzer, plugin, mcpServer)
   .settings(
     name           := "sbt-call-graph-root",
     publish / skip := true,

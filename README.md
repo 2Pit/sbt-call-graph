@@ -153,6 +153,45 @@ flowchart LR
   n4 --> n5
 ```
 
+## MCP Server
+
+The `mcp-server` module exposes the analyzer as a [Model Context Protocol](https://modelcontextprotocol.io/) server so Claude (and other MCP clients) can issue call-graph queries as native tool calls — no `/skill` invocation required.
+
+Five tools are exposed: `graphIndex`, `graphSearch`, `graphVia`, `graphPath`, `graphModule` — the same five surfaces as the SBT plugin, but consuming `.semanticdb` files directly without going through SBT.
+
+### Build
+
+```sh
+sbt mcpServer/assembly
+# produces modules/mcp-server/target/scala-2.12/call-graph-mcp.jar (~43 MB)
+```
+
+### Register with Claude Code
+
+Add to `.mcp.json` (workspace) or `~/.claude.json` (global):
+
+```json
+{
+  "mcpServers": {
+    "call-graph": {
+      "command": "java",
+      "args": [
+        "-jar", "/abs/path/to/call-graph-mcp.jar",
+        "--root", "/abs/path/to/your/workspace"
+      ]
+    }
+  }
+}
+```
+
+Optional: pass `--semanticdb-dir <path>` (repeatable) to override discovery. Without it the server walks `<root>` for `target/**/meta` directories.
+
+The server requires `.semanticdb` files. If you see `compileError: true` in the response, run `sbt compile` in the workspace first.
+
+### Logs
+
+The MCP stdio transport owns stdout, so all server logs go to stderr.
+
 ## Limitations
 
 - Method-level only — inheritance and type relationships are not in the graph

@@ -23,7 +23,7 @@ object ToolHandlers {
       mk.tool("graphSearch", Descriptions.graphSearch, Schemas.graphSearch) { req =>
         val args       = req.arguments()
         val query      = Args.str(args, "query")
-        val maxResults = Args.int(args, "maxResults", 50)
+        val maxResults = Args.int(args, "maxResults", 10)
         val (graph, _) = service.getGraph()
         val matches    = QueryEngine.search(graph, query, maxResults)
         JsonOutput.renderSearchResult(matches, query, graph)
@@ -41,8 +41,8 @@ object ToolHandlers {
       mk.tool("graphPath", Descriptions.graphPath, Schemas.graphPath) { req =>
         val args        = req.arguments()
         val vertices    = Args.strList(args, "vertices")
-        val maxDepth    = Args.int(args, "maxDepth", 20)
-        val maxPaths    = Args.int(args, "maxPaths", 100)
+        val maxDepth    = Args.int(args, "maxDepth", 8)
+        val maxPaths    = Args.int(args, "maxPaths", 5)
         val filter      = Args.regexes(args, "filterOut")
         val (graph, st) = service.getGraph()
         val result      = QueryEngine.pathsAmong(graph, vertices, maxDepth, maxPaths)
@@ -113,7 +113,7 @@ private[mcp] object Schemas {
       |  "type": "object",
       |  "properties": {
       |    "query":      { "type": "string", "description": "Substring of FQN or displayName (case-sensitive)." },
-      |    "maxResults": { "type": "integer", "description": "Maximum matches to return.", "default": 50 }
+      |    "maxResults": { "type": "integer", "description": "Maximum matches to return. Default kept low because graphSearch is intentionally noisy — even a unique class name typically matches 40+ vertices (vals, lambdas, inner methods).", "default": 10 }
       |  },
       |  "required": ["query"],
       |  "additionalProperties": false
@@ -137,8 +137,8 @@ private[mcp] object Schemas {
       |  "type": "object",
       |  "properties": {
       |    "vertices":  { "type": "array", "items": { "type": "string" }, "minItems": 1, "description": "FQNs to connect; paths are searched between consecutive prefix pairs. With a single vertex, returns an empty result." },
-      |    "maxDepth":  { "type": "integer", "default": 20, "description": "Maximum DFS depth per path." },
-      |    "maxPaths":  { "type": "integer", "default": 100, "description": "Maximum number of paths collected." },
+      |    "maxDepth":  { "type": "integer", "default": 8,  "description": "Maximum DFS depth per path. If you get no paths, raise to 15–20." },
+      |    "maxPaths":  { "type": "integer", "default": 5,  "description": "Maximum number of paths collected. If `truncated: true` and you need more, raise to 20–100." },
       |    "filterOut": { "type": "array", "items": { "type": "string" }, "description": "Regexes; matching node IDs are excluded." }
       |  },
       |  "required": ["vertices"],
@@ -159,34 +159,109 @@ private[mcp] object Schemas {
 private[mcp] object Descriptions {
 
   val graphIndex: String =
-    """Return diagnostics for the call graph: node count, edge count, and load status.
-      |Use this first to confirm the graph is loaded before issuing other queries.
-      |If `notCompiled` is true, run `sbt compile` to generate .semanticdb files.
-      |If `emptyGraph` is true, files are present but no METHOD symbols were extracted.""".stripMargin
+    """Diagnostics: node count, edge count, load status. Cheap (<200B response).
+      |Call this first to confirm the graph is loaded before issuing other queries.
+      |  If `notCompiled` is true → run `sbt compile` to generate .semanticdb files.
+      |  If `emptyGraph` is true  → files present but no METHOD symbols extracted.
+      |
+      |FQN FORMAT (used by every other graph* tool):
+      |  package separator:  /            e.g. sreo/session/
+      |  object:             .            e.g. SessionLive.
+      |  class / trait:      #            e.g. SessionLive#
+      |  method:             ().          e.g. close().
+      |Full example: sreo/session/SessionLive#close().""".stripMargin
 
   val graphSearch: String =
-    """Search for vertices (methods) whose SemanticDB FQN or short displayName contains `query` (case-sensitive).
-      |Returns matches with file/line metadata. FQN format example:
-      |  io/github/twopit/callgraph/GraphLoader.load().
-      |For richer navigation (goto-definition / find-references) use Metals MCP; for path/neighbourhood/coupling queries use the other graph* tools.""".stripMargin
+    """Search for vertices (methods/vals/classes) whose SemanticDB FQN or displayName contains `query` (case-sensitive).
+      |Default maxResults=10 — kept low because the graph indexes every val, lambda, and inner method, so even a unique class name typically returns 40+ matches.
+      |
+      |WHEN TO USE:
+      |  - You need the FQN of a specific method but don't know its package yet.
+      |
+      |DO NOT USE FOR:
+      |  - "Where is class X defined?"     → use Grep (faster, exact).
+      |  - "Find all usages of class X."   → use Grep.
+      |  - Browsing what's in a package    → use Grep / Glob on the file tree.
+      |
+      |AFTER CALLING, filter with jq before reading the raw result — most matches are noise:
+      |  jq '.matches[] | select(.displayName == "exactName")'   # exact name only
+      |  jq '.matches[] | .id'                                    # FQN-only list (10× smaller)
+      |  jq '.matches[] | select(.id | endswith("()."))'          # methods only, drop vals
+      |
+      |For goto-definition / find-references use Metals MCP — this tool is for the call graph.""".stripMargin
 
   val graphVia: String =
-    """Show the neighbourhood (callers + callees) of `vertex` up to depthIn/depthOut hops.
-      |Returns nodes, edges, and `readHints` — file ranges Claude can pass to the Read tool to inspect the methods involved.
-      |FQN format example: io/github/twopit/callgraph/GraphLoader.load().
-      |Use this for "what calls X and what does X call" style questions; use graphPath for connecting two known endpoints.""".stripMargin
+    """Neighbourhood (callers + callees) of `vertex` up to depthIn/depthOut hops.
+      |Returns nodes, edges, and `readHints` — file ranges to pass to Read.
+      |
+      |DEFAULTS: depthIn=2, depthOut=2 (both directions, 2 hops). Tune for context economy:
+      |  callers-only (fan-in analysis):  depthOut=0
+      |  callees-only:                    depthIn=0
+      |  immediate neighbours only:       depthIn=1, depthOut=1
+      |  deep exploration:                depthIn=3+ / depthOut=3+   (response size grows fast)
+      |
+      |If the result is big, narrow with filterOut (regexes on node IDs):
+      |  filterOut=["sreo/db/.*", "sreo/tkl/.*"]
+      |
+      |WHEN TO USE:
+      |  - "What calls X" / fan-in analysis before refactoring or splitting a component.
+      |  - "What does X call" / understanding a transitive dependency tree without reading.
+      |
+      |DO NOT USE FOR:
+      |  - You're already Reading the file containing X — its body shows immediate callees with code.
+      |  - You want one specific caller you can grep by name.
+      |
+      |AFTER CALLING, scan names without reading bodies:
+      |  jq '.nodes[] | .displayName'                  # just method names
+      |  jq '.edges[]'                                  # raw call edges
+      |  jq '.readHints[] | {file, ranges}'             # which source ranges Read should fetch
+      |
+      |FQN format: sreo/session/SessionLive#close(). — get FQNs from graphSearch if unknown.""".stripMargin
 
   val graphPath: String =
-    """Find directed call paths connecting the given `vertices` (≥2 FQNs).
-      |Returns nodes, edges, `truncated`, and `readHints`.
-      |FQN format example: io/github/twopit/callgraph/GraphLoader.load().
-      |Use this when you have two known endpoints; use graphVia when you only have one endpoint and want a neighbourhood.""".stripMargin
+    """Directed call paths connecting the given `vertices` (≥2 FQNs).
+      |Returns nodes, edges, `truncated` flag, and `readHints`.
+      |
+      |DEFAULTS (kept gentle): maxDepth=8, maxPaths=5.
+      |  - If no paths found: raise maxDepth (8 → 15 → 20).
+      |  - If `truncated: true` and you need more: raise maxPaths (5 → 20 → 100).
+      |
+      |DIRECTION MATTERS: paths are searched forward, from earlier vertices to later ones in
+      |the argument list. To get reverse paths, swap the order.
+      |
+      |WHEN TO USE:
+      |  - "How does an HTTP request reach the DB?" — two known endpoints, want the chain.
+      |  - Confirming a suspected wiring path exists.
+      |
+      |DO NOT USE FOR:
+      |  - Endpoints are 1–2 hops apart and already visible in a Read.
+      |  - You only know one endpoint → use graphVia instead.
+      |
+      |Narrow large neighbourhoods with filterOut=["pkg/.*"] before searching.
+      |AFTER CALLING:
+      |  jq '.edges[]'                       # the path edges
+      |  jq '.nodes[] | .displayName'        # methods on the path
+      |  jq '.truncated'                     # was the search cut short
+      |
+      |FQN format: sreo/session/SessionLive#close().""".stripMargin
 
   val graphModule: String =
-    """Return call edges that cross the boundary of the module identified by `prefix`.
-      |`prefix` is matched as a substring against each node's source file path.
-      |Returns two lists, `outgoing` (calls from inside out) and `incoming` (calls from outside in), each with from/to node metadata.
-      |Use this to understand how a package or module couples with the rest of the codebase.""".stripMargin
+    """Call edges that cross the boundary of the module identified by `prefix`
+      |(matched as a substring against each node's source file path).
+      |Returns `outgoing` (calls from inside out) and `incoming` (calls from outside in).
+      |
+      |WHEN TO USE:
+      |  - "How coupled is module X to the rest" — before splitting or merging modules.
+      |  - Auditing what crosses an architectural boundary.
+      |
+      |DO NOT USE FOR:
+      |  - You already know the few callers/callees — graphVia is cheaper and more precise.
+      |  - The "module" is one class — use graphVia on the class anchor.
+      |
+      |For large modules this can be hundreds of edges. Extract just what you need:
+      |  jq '.outgoing[] | .to.displayName' | sort -u
+      |  jq '.incoming  | length'
+      |  jq '.outgoing[] | select(.to.id | startswith("sreo/db/"))'""".stripMargin
 }
 
 final class ToolArgError(msg: String) extends RuntimeException(msg)

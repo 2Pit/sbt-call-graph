@@ -24,12 +24,13 @@ object Main {
     val jsonMapper: McpJsonMapper = McpJsonDefaults.getMapper
     val transport                 = new StdioServerTransportProvider(jsonMapper)
     val service                   = new GraphService(opts.root, opts.semanticdbDirs)
+    val outputDir                 = opts.root.resolve("target").resolve("call-graph")
 
     val server = McpServer
       .sync(transport)
       .serverInfo("call-graph-mcp", BuildVersion.version)
       .capabilities(ServerCapabilities.builder().tools(false).build())
-      .tools(ToolHandlers.all(service, jsonMapper))
+      .tools(ToolHandlers.all(service, jsonMapper, outputDir))
       .build()
 
     val shutdown = new CountDownLatch(1)

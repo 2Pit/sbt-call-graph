@@ -6,17 +6,37 @@ import io.modelcontextprotocol.server.McpServerFeatures.SyncToolSpecification
 import io.modelcontextprotocol.server.McpSyncServerExchange
 import io.modelcontextprotocol.json.McpJsonMapper
 
+import java.nio.charset.StandardCharsets
+import java.nio.file.{Files, Path}
 import java.util.function.BiFunction
 import scala.collection.JavaConverters._
 import scala.util.matching.Regex
 
-/** Builds the five SyncToolSpecifications wrapped around a GraphService. */
+/** Builds the five SyncToolSpecifications wrapped around a GraphService.
+  *
+  * Large responses are written to `outputDir/N.json` and the inline reply is a short summary;
+  * small responses are returned inline. `graphIndex` is always inline.
+  */
 object ToolHandlers {
 
-  def all(service: GraphService, jsonMapper: McpJsonMapper): java.util.List[SyncToolSpecification] = {
-    val mk = new ToolBuilder(jsonMapper)
+  /** Auto-mode threshold: responses with a rendered JSON below this many bytes are returned
+    * inline; larger ones are written to disk and replaced by a short summary.
+    */
+  private[mcp] val AutoInlineThresholdBytes = 8192
+
+  /** How many node IDs to include in the file-mode summary as a quick "is this the right
+    * result?" preview.
+    */
+  private[mcp] val PreviewNodeLimit = 10
+
+  def all(
+      service: GraphService,
+      jsonMapper: McpJsonMapper,
+      outputDir: Path,
+  ): java.util.List[SyncToolSpecification] = {
+    val mk = new ToolBuilder(jsonMapper, outputDir)
     List(
-      mk.tool("graphIndex", Descriptions.graphIndex, Schemas.graphIndex) { _ =>
+      mk.toolForceInline("graphIndex", Descriptions.graphIndex, Schemas.graphIndex) { _ =>
         val (graph, st) = service.getGraph()
         JsonOutput.renderIndex(graph, st.message, st.notCompiled, st.emptyGraph)
       },
@@ -26,7 +46,15 @@ object ToolHandlers {
         val maxResults = Args.int(args, "maxResults", 10)
         val (graph, _) = service.getGraph()
         val matches    = QueryEngine.search(graph, query, maxResults)
-        JsonOutput.renderSearchResult(matches, query, graph)
+        val json       = JsonOutput.renderSearchResult(matches, query, graph)
+        ToolResult(
+          fullJson = json,
+          nodeCount = matches.size,
+          edgeCount = 0,
+          found = None,
+          truncated = None,
+          previewNodeIds = matches.take(PreviewNodeLimit),
+        )
       },
       mk.tool("graphVia", Descriptions.graphVia, Schemas.graphVia) { req =>
         val args        = req.arguments()
@@ -36,7 +64,17 @@ object ToolHandlers {
         val filter      = Args.regexes(args, "filterOut")
         val (graph, st) = service.getGraph()
         val result      = QueryEngine.viaVertex(graph, vertex, depthIn, depthOut)
-        JsonOutput.renderViaResult(result, vertex, depthIn, depthOut, st.unusable, graph, filter)
+        val gr          = result.getOrElse(GraphResult.empty)
+        val (fNodes, fEdges) = applyFilter(gr.nodes, gr.edges, filter)
+        val json = JsonOutput.renderViaResult(result, vertex, depthIn, depthOut, st.unusable, graph, filter)
+        ToolResult(
+          fullJson = json,
+          nodeCount = fNodes.size,
+          edgeCount = fEdges.size,
+          found = Some(fNodes.nonEmpty),
+          truncated = Some(gr.truncated),
+          previewNodeIds = fNodes.take(PreviewNodeLimit),
+        )
       },
       mk.tool("graphPath", Descriptions.graphPath, Schemas.graphPath) { req =>
         val args        = req.arguments()
@@ -46,24 +84,114 @@ object ToolHandlers {
         val filter      = Args.regexes(args, "filterOut")
         val (graph, st) = service.getGraph()
         val result      = QueryEngine.pathsAmong(graph, vertices, maxDepth, maxPaths)
-        JsonOutput.renderPathResult(result, vertices, st.unusable, graph, filter)
+        val (fNodes, fEdges) = applyFilter(result.nodes, result.edges, filter)
+        val json = JsonOutput.renderPathResult(result, vertices, st.unusable, graph, filter)
+        ToolResult(
+          fullJson = json,
+          nodeCount = fNodes.size,
+          edgeCount = fEdges.size,
+          found = Some(fNodes.nonEmpty),
+          truncated = Some(result.truncated),
+          previewNodeIds = fNodes.take(PreviewNodeLimit),
+        )
       },
       mk.tool("graphModule", Descriptions.graphModule, Schemas.graphModule) { req =>
         val prefix     = Args.str(req.arguments(), "prefix")
         val (graph, _) = service.getGraph()
         val result     = ModuleQuery.moduleEdges(graph, prefix)
-        JsonOutput.renderModuleResult(result, prefix, graph)
+        val json       = JsonOutput.renderModuleResult(result, prefix, graph)
+        val previewIds = (result.outgoing.map(_.srcId) ++ result.incoming.map(_.tgtId)).distinct
+        ToolResult(
+          fullJson = json,
+          nodeCount = previewIds.size,
+          edgeCount = result.outgoing.size + result.incoming.size,
+          found = Some(result.outgoing.nonEmpty || result.incoming.nonEmpty),
+          truncated = None,
+          previewNodeIds = previewIds.take(PreviewNodeLimit),
+        )
       },
     ).asJava
   }
+
+  /** Drop nodes (and edges touching them) whose IDs match any of `filterOut`. Mirrors what
+    * `JsonOutput.renderGraphResult` does internally, so the summary counts match the file content.
+    */
+  private def applyFilter(
+      nodes: Seq[String],
+      edges: Seq[(String, String)],
+      filterOut: Seq[Regex],
+  ): (Seq[String], Seq[(String, String)]) =
+    if (filterOut.isEmpty) (nodes, edges)
+    else {
+      val hidden = (id: String) => filterOut.exists(_.findFirstIn(id).isDefined)
+      val fn     = nodes.filterNot(hidden)
+      val fnSet  = fn.toSet
+      val fe     = edges.filter { case (s, t) => fnSet(s) && fnSet(t) }
+      (fn, fe)
+    }
 }
 
-/** Builds a SyncToolSpecification with a uniform handler wrapper that turns
-  * `ToolArgError` and uncaught exceptions into `isError=true` results.
+/** What the body of a tool returns: the full JSON the agent would have seen in the old
+  * inline-everything mode, plus the metadata needed to build a short summary if the
+  * response is large enough to be diverted to disk.
   */
-private[mcp] final class ToolBuilder(jsonMapper: McpJsonMapper) {
+private[mcp] final case class ToolResult(
+    fullJson: String,
+    nodeCount: Int,
+    edgeCount: Int,
+    found: Option[Boolean],
+    truncated: Option[Boolean],
+    previewNodeIds: Seq[String],
+)
 
-  def tool(name: String, description: String, schema: String)(body: CallToolRequest => String): SyncToolSpecification =
+private[mcp] sealed trait OutputMode
+private[mcp] object OutputMode {
+  case object Auto   extends OutputMode
+  case object Inline extends OutputMode
+  case object File   extends OutputMode
+
+  def parse(s: String): OutputMode = s match {
+    case "auto"   => Auto
+    case "inline" => Inline
+    case "file"   => File
+    case other    => throw new ToolArgError(s"mode must be one of auto|inline|file, got $other")
+  }
+}
+
+/** Builds a SyncToolSpecification with a uniform handler wrapper that:
+  *   - parses the optional `mode` arg (auto/inline/file)
+  *   - decides inline vs file output based on the rendered JSON size
+  *   - turns ToolArgError and uncaught exceptions into isError=true results
+  */
+private[mcp] final class ToolBuilder(jsonMapper: McpJsonMapper, outputDir: Path) {
+
+  /** Standard tool: subject to the output-mode policy. */
+  def tool(name: String, description: String, schema: String)(
+      body: CallToolRequest => ToolResult
+  ): SyncToolSpecification = build(name, description, schema, body, forceInline = false)
+
+  /** Tool that is always returned inline regardless of mode (used for cheap diagnostics
+    * like graphIndex where the response is tiny by construction).
+    */
+  def toolForceInline(name: String, description: String, schema: String)(
+      body: CallToolRequest => String
+  ): SyncToolSpecification =
+    build(
+      name,
+      description,
+      schema,
+      req =>
+        ToolResult(body(req), nodeCount = 0, edgeCount = 0, found = None, truncated = None, previewNodeIds = Nil),
+      forceInline = true,
+    )
+
+  private def build(
+      name: String,
+      description: String,
+      schema: String,
+      body: CallToolRequest => ToolResult,
+      forceInline: Boolean,
+  ): SyncToolSpecification =
     SyncToolSpecification
       .builder()
       .tool(
@@ -74,17 +202,22 @@ private[mcp] final class ToolBuilder(jsonMapper: McpJsonMapper) {
           .inputSchema(jsonMapper, schema)
           .build()
       )
-      .callHandler(handler(body))
+      .callHandler(handler(name, body, forceInline))
       .build()
 
   private def handler(
-      body: CallToolRequest => String
+      name: String,
+      body: CallToolRequest => ToolResult,
+      forceInline: Boolean,
   ): BiFunction[McpSyncServerExchange, CallToolRequest, CallToolResult] =
     new BiFunction[McpSyncServerExchange, CallToolRequest, CallToolResult] {
       override def apply(_ex: McpSyncServerExchange, req: CallToolRequest): CallToolResult =
-        try
-          CallToolResult.builder().addTextContent(body(req)).isError(false).build()
-        catch {
+        try {
+          val mode      = if (forceInline) OutputMode.Inline else Args.mode(req.arguments())
+          val r         = body(req)
+          val text      = ToolOutput.render(name, r, mode, outputDir)
+          CallToolResult.builder().addTextContent(text).isError(false).build()
+        } catch {
           case e: ToolArgError =>
             CallToolResult.builder().addTextContent(s"argument error: ${e.getMessage}").isError(true).build()
           case e: Throwable =>
@@ -99,7 +232,83 @@ private[mcp] final class ToolBuilder(jsonMapper: McpJsonMapper) {
     }
 }
 
+/** Decides inline-vs-file and renders the agent-facing text. */
+private[mcp] object ToolOutput {
+
+  def render(toolName: String, r: ToolResult, mode: OutputMode, outputDir: Path): String =
+    mode match {
+      case OutputMode.Inline => r.fullJson
+      case OutputMode.File   => writeFileAndSummary(toolName, r, outputDir)
+      case OutputMode.Auto =>
+        if (r.fullJson.getBytes(StandardCharsets.UTF_8).length < ToolHandlers.AutoInlineThresholdBytes) r.fullJson
+        else writeFileAndSummary(toolName, r, outputDir)
+    }
+
+  private def writeFileAndSummary(toolName: String, r: ToolResult, outputDir: Path): String = {
+    val file = JsonOutput.nextOutputFile(outputDir)
+    Files.createDirectories(file.getParent)
+    Files.write(file, r.fullJson.getBytes(StandardCharsets.UTF_8))
+    summaryJson(toolName, r, file.toString)
+  }
+
+  private def summaryJson(toolName: String, r: ToolResult, filePath: String): String = {
+    val fields = scala.collection.mutable.ArrayBuffer.empty[(String, String)]
+    fields += ("file"  -> jstr(filePath))
+    r.found.foreach(v => fields += ("found" -> v.toString))
+    r.truncated.foreach(v => fields += ("truncated" -> v.toString))
+    fields += ("nodes" -> r.nodeCount.toString)
+    fields += ("edges" -> r.edgeCount.toString)
+    fields += ("previewNodes" -> jarr(r.previewNodeIds.map(jstr)))
+    fields += ("readHints" -> jarr(readHintsFor(toolName, filePath).map(jstr)))
+    fields += ("note" -> jstr("response written to disk; read with jq <file>. Pass mode=\"inline\" to inline."))
+    fields.map { case (k, v) => s"  ${jstr(k)}: $v" }.mkString("{\n", ",\n", "\n}")
+  }
+
+  /** Per-tool jq one-liners parameterised on the actual file path. Kept short — three at most. */
+  private def readHintsFor(toolName: String, file: String): Seq[String] = toolName match {
+    case "graphSearch" =>
+      Seq(
+        s"jq -r '.matches[] | .id' $file",
+        s"""jq '.matches[] | select(.displayName == "exactName")' $file""",
+      )
+    case "graphVia" =>
+      Seq(
+        s"jq -r '.nodes[] | .displayName' $file",
+        s"jq '.edges[]' $file",
+        s"jq '.readHints[]' $file",
+      )
+    case "graphPath" =>
+      Seq(
+        s"jq '.edges[]' $file",
+        s"jq -r '.nodes[] | .displayName' $file",
+        s"jq '.truncated' $file",
+      )
+    case "graphModule" =>
+      Seq(
+        s"jq -r '.outgoing[] | .to.displayName' $file",
+        s"jq '.incoming  | length' $file",
+        s"jq '.outgoing | length' $file",
+      )
+    case _ => Nil
+  }
+
+  private def jstr(s: String): String =
+    "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n") + "\""
+
+  private def jarr(items: Seq[String]): String =
+    if (items.isEmpty) "[]" else items.mkString("[", ", ", "]")
+}
+
 private[mcp] object Schemas {
+
+  // `mode` snippet is shared by every tool that supports the policy (i.e. all except graphIndex).
+  private val modeProp: String =
+    """    "mode": {
+      |      "type": "string",
+      |      "enum": ["auto", "inline", "file"],
+      |      "default": "auto",
+      |      "description": "auto (default): inline if response < 8KB, else write target/call-graph/N.json and return a summary. inline: always return full JSON. file: always write to disk."
+      |    }""".stripMargin
 
   val graphIndex: String =
     """{
@@ -109,51 +318,55 @@ private[mcp] object Schemas {
       |}""".stripMargin
 
   val graphSearch: String =
-    """{
-      |  "type": "object",
-      |  "properties": {
-      |    "query":      { "type": "string", "description": "Substring of FQN or displayName (case-sensitive)." },
-      |    "maxResults": { "type": "integer", "description": "Maximum matches to return. Default kept low because graphSearch is intentionally noisy — even a unique class name typically matches 40+ vertices (vals, lambdas, inner methods).", "default": 10 }
-      |  },
-      |  "required": ["query"],
-      |  "additionalProperties": false
-      |}""".stripMargin
+    s"""{
+       |  "type": "object",
+       |  "properties": {
+       |    "query":      { "type": "string", "description": "Substring of FQN or displayName (case-sensitive)." },
+       |    "maxResults": { "type": "integer", "description": "Maximum matches to return. Default kept low because graphSearch is intentionally noisy — even a unique class name typically matches 40+ vertices (vals, lambdas, inner methods).", "default": 10 },
+       |$modeProp
+       |  },
+       |  "required": ["query"],
+       |  "additionalProperties": false
+       |}""".stripMargin
 
   val graphVia: String =
-    """{
-      |  "type": "object",
-      |  "properties": {
-      |    "vertex":    { "type": "string", "description": "FQN of the method to centre the neighbourhood on." },
-      |    "depthIn":   { "type": "integer", "default": 2, "description": "BFS hops backward (callers)." },
-      |    "depthOut":  { "type": "integer", "default": 2, "description": "BFS hops forward (callees)." },
-      |    "filterOut": { "type": "array", "items": { "type": "string" }, "description": "Regexes; matching node IDs are excluded." }
-      |  },
-      |  "required": ["vertex"],
-      |  "additionalProperties": false
-      |}""".stripMargin
+    s"""{
+       |  "type": "object",
+       |  "properties": {
+       |    "vertex":    { "type": "string", "description": "FQN of the method to centre the neighbourhood on." },
+       |    "depthIn":   { "type": "integer", "default": 2, "description": "BFS hops backward (callers)." },
+       |    "depthOut":  { "type": "integer", "default": 2, "description": "BFS hops forward (callees)." },
+       |    "filterOut": { "type": "array", "items": { "type": "string" }, "description": "Regexes; matching node IDs are excluded." },
+       |$modeProp
+       |  },
+       |  "required": ["vertex"],
+       |  "additionalProperties": false
+       |}""".stripMargin
 
   val graphPath: String =
-    """{
-      |  "type": "object",
-      |  "properties": {
-      |    "vertices":  { "type": "array", "items": { "type": "string" }, "minItems": 1, "description": "FQNs to connect; paths are searched between consecutive prefix pairs. With a single vertex, returns an empty result." },
-      |    "maxDepth":  { "type": "integer", "default": 8,  "description": "Maximum DFS depth per path. If you get no paths, raise to 15–20." },
-      |    "maxPaths":  { "type": "integer", "default": 5,  "description": "Maximum number of paths collected. If `truncated: true` and you need more, raise to 20–100." },
-      |    "filterOut": { "type": "array", "items": { "type": "string" }, "description": "Regexes; matching node IDs are excluded." }
-      |  },
-      |  "required": ["vertices"],
-      |  "additionalProperties": false
-      |}""".stripMargin
+    s"""{
+       |  "type": "object",
+       |  "properties": {
+       |    "vertices":  { "type": "array", "items": { "type": "string" }, "minItems": 1, "description": "FQNs to connect; paths are searched between consecutive prefix pairs. With a single vertex, returns an empty result." },
+       |    "maxDepth":  { "type": "integer", "default": 8,  "description": "Maximum DFS depth per path. If you get no paths, raise to 15–20." },
+       |    "maxPaths":  { "type": "integer", "default": 5,  "description": "Maximum number of paths collected. If `truncated: true` and you need more, raise to 20–100." },
+       |    "filterOut": { "type": "array", "items": { "type": "string" }, "description": "Regexes; matching node IDs are excluded." },
+       |$modeProp
+       |  },
+       |  "required": ["vertices"],
+       |  "additionalProperties": false
+       |}""".stripMargin
 
   val graphModule: String =
-    """{
-      |  "type": "object",
-      |  "properties": {
-      |    "prefix": { "type": "string", "description": "File-path substring identifying the module. Edges where one side is inside and the other outside are returned." }
-      |  },
-      |  "required": ["prefix"],
-      |  "additionalProperties": false
-      |}""".stripMargin
+    s"""{
+       |  "type": "object",
+       |  "properties": {
+       |    "prefix": { "type": "string", "description": "File-path substring identifying the module. Edges where one side is inside and the other outside are returned." },
+       |$modeProp
+       |  },
+       |  "required": ["prefix"],
+       |  "additionalProperties": false
+       |}""".stripMargin
 }
 
 private[mcp] object Descriptions {
@@ -307,5 +520,13 @@ private[mcp] object Args {
           throw new ToolArgError(s"$key must be an array of regex strings, got non-string item")
         items.collect { case s: String => s.r }
       case Some(other) => throw new ToolArgError(s"$key must be an array of regex strings, got $other")
+    }
+
+  /** Parse the optional `mode` arg controlling inline vs file output. Default Auto. */
+  def mode(args: java.util.Map[String, AnyRef]): OutputMode =
+    Option(args).flatMap(a => Option(a.get("mode"))) match {
+      case None                          => OutputMode.Auto
+      case Some(s: String) if s.nonEmpty => OutputMode.parse(s)
+      case Some(other)                   => throw new ToolArgError(s"mode must be a string, got $other")
     }
 }

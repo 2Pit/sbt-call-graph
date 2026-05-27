@@ -109,3 +109,20 @@ All query commands support `--format json|html|md|dot`:
   "readHints": [ { "file": "...", "ranges": [ { "start": 40, "end": 60 } ] } ]
 }
 ```
+
+---
+
+## MCP Output Mode
+
+To keep agent context lean, the MCP server diverts large tool responses to disk by default:
+
+- **auto** (default) — responses < 8 KB are returned inline; larger responses are written to `<root>/target/call-graph/N.json` and the inline reply is replaced by `{ file, found, truncated, nodes, edges, previewNodes, readHints, note }`.
+- **inline** — every tool returns the full JSON (escape hatch for known-small queries).
+- **file** — every tool writes to disk (escape hatch for known-large queries).
+- `graphIndex` is always inline regardless of `mode`.
+
+Files are named monotonically via `OutputCounter`. Cleanup: `sbt clean` of the root project, or `rm -rf target/call-graph`.
+
+Knobs live in `ToolHandlers.scala`:
+- `AutoInlineThresholdBytes = 8192`
+- `PreviewNodeLimit = 10`

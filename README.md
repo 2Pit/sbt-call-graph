@@ -188,6 +188,30 @@ Optional: pass `--semanticdb-dir <path>` (repeatable) to override discovery. Wit
 
 The server requires `.semanticdb` files. If you see `compileError: true` in the response, run `sbt compile` in the workspace first.
 
+### Output mode (context economy)
+
+Tool replies are governed by a `mode` argument — `auto` (default), `inline`, or `file` — applied to every tool except `graphIndex` (always inline).
+
+- **auto** — small responses (< 8 KB) are returned inline as JSON. Larger responses are written to `<root>/target/call-graph/N.json` and the MCP reply is replaced by a short summary:
+
+  ```json
+  {
+    "file": "/abs/path/target/call-graph/7.json",
+    "found": true,
+    "truncated": false,
+    "nodes": 142,
+    "edges": 318,
+    "previewNodes": ["sreo/study/StudySessionService#start().", "..."],
+    "readHints": ["jq -r '.nodes[] | .displayName' …", "jq '.edges[]' …"],
+    "note": "response written to disk; read with jq <file>. Pass mode=\"inline\" to inline."
+  }
+  ```
+
+- **inline** — always return full JSON (escape hatch for debugging / small known queries).
+- **file** — always write to disk (escape hatch for queries you know are large).
+
+`OutputCounter` increments file names monotonically; the directory is cleaned by `sbt clean`.
+
 ### Logs
 
 The MCP stdio transport owns stdout, so all server logs go to stderr.

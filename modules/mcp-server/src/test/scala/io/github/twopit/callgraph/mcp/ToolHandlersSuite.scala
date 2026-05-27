@@ -11,12 +11,21 @@ class ToolHandlersSuite extends munit.FunSuite {
 
   private val jsonMapper: McpJsonMapper = McpJsonDefaults.getMapper
 
-  private def withEmptyService[A](f: GraphService => A): A = {
+  private case class Fix(service: GraphService, outputDir: Path, workspaceRoot: Path)
+
+  private def withEmptyService[A](f: Fix => A): A = {
     val dir = Files.createTempDirectory("cg-tools-")
-    try f(new GraphService(dir, Nil))
-    finally
-      try Files.deleteIfExists(dir)
-      catch { case _: Throwable => () }
+    try {
+      val out = dir.resolve("target").resolve("call-graph")
+      f(Fix(new GraphService(dir, Nil), out, dir))
+    } finally
+      try {
+        // best-effort cleanup; don't fail tests on it
+        val walker = Files.walk(dir).iterator()
+        val all    = scala.collection.mutable.ArrayBuffer.empty[Path]
+        while (walker.hasNext) all += walker.next()
+        all.reverse.foreach(p => try Files.deleteIfExists(p) catch { case _: Throwable => () })
+      } catch { case _: Throwable => () }
   }
 
   private def call(
@@ -34,18 +43,26 @@ class ToolHandlersSuite extends munit.FunSuite {
     first.text()
   }
 
+  private def tools(fix: Fix) = ToolHandlers.all(fix.service, jsonMapper, fix.outputDir).asScala.toList
+  private def tool(fix: Fix, name: String)    = tools(fix).find(_.tool().name() == name).get
+  private def filesIn(dir: Path): Seq[Path] =
+    if (!Files.isDirectory(dir)) Nil
+    else {
+      val s = Files.list(dir)
+      try s.iterator().asScala.toList
+      finally s.close()
+    }
+
   test("registers exactly five tools") {
-    withEmptyService { svc =>
-      val tools = ToolHandlers.all(svc, jsonMapper).asScala.toList.map(_.tool().name())
-      assertEquals(tools.sorted, List("graphIndex", "graphModule", "graphPath", "graphSearch", "graphVia"))
+    withEmptyService { fix =>
+      val names = tools(fix).map(_.tool().name())
+      assertEquals(names.sorted, List("graphIndex", "graphModule", "graphPath", "graphSearch", "graphVia"))
     }
   }
 
   test("graphIndex returns JSON with status, notCompiled, emptyGraph on empty workspace") {
-    withEmptyService { svc =>
-      val specs = ToolHandlers.all(svc, jsonMapper).asScala.toList
-      val idx   = specs.find(_.tool().name() == "graphIndex").get
-      val res   = call(idx, Map.empty)
+    withEmptyService { fix =>
+      val res = call(tool(fix, "graphIndex"), Map.empty)
       assert(!res.isError, s"unexpected error: ${textOf(res)}")
       val json = textOf(res)
       assert(json.contains("\"status\""), json)
@@ -54,39 +71,75 @@ class ToolHandlersSuite extends munit.FunSuite {
     }
   }
 
-  test("graphSearch with empty graph returns count=0") {
-    withEmptyService { svc =>
-      val specs = ToolHandlers.all(svc, jsonMapper).asScala.toList
-      val s     = specs.find(_.tool().name() == "graphSearch").get
-      val res   = call(s, Map("query" -> "Anything"))
-      val json  = textOf(res)
+  test("graphIndex ignores mode=file (always inline) and does not write a file") {
+    withEmptyService { fix =>
+      val res  = call(tool(fix, "graphIndex"), Map("mode" -> "file"))
+      val json = textOf(res)
+      assert(!json.contains("\"file\":"), s"graphIndex should not divert to disk; got: $json")
+      assertEquals(filesIn(fix.outputDir).filter(_.toString.endsWith(".json")), Nil)
+    }
+  }
+
+  test("graphSearch with empty graph returns inline JSON (small response, auto mode)") {
+    withEmptyService { fix =>
+      val res  = call(tool(fix, "graphSearch"), Map("query" -> "Anything"))
+      val json = textOf(res)
       assert(json.contains("\"count\""), json)
       assert(json.contains("\"matches\""), json)
+      // small response — no file should be written
+      assertEquals(filesIn(fix.outputDir).filter(_.toString.endsWith(".json")), Nil)
+    }
+  }
+
+  test("graphSearch with mode=file writes file and returns summary even when small") {
+    withEmptyService { fix =>
+      val res  = call(tool(fix, "graphSearch"), Map("query" -> "Anything", "mode" -> "file"))
+      val json = textOf(res)
+      assert(json.contains("\"file\":"), json)
+      assert(json.contains("\"previewNodes\":"), json)
+      assert(json.contains("\"readHints\":"), json)
+      assert(json.contains("\"nodes\":"), json)
+      assert(json.contains("\"edges\":"), json)
+      val written = filesIn(fix.outputDir).filter(_.toString.endsWith(".json"))
+      assertEquals(written.size, 1, s"expected exactly one .json file under ${fix.outputDir}, found: $written")
+    }
+  }
+
+  test("mode=inline forces inline output and writes no file") {
+    withEmptyService { fix =>
+      val res  = call(tool(fix, "graphVia"), Map("vertex" -> "nope/such/Vertex.x().", "mode" -> "inline"))
+      val json = textOf(res)
+      assert(json.contains("\"depthIn\""), s"expected full JSON; got: $json")
+      assert(!json.contains("\"file\":"), s"inline mode should not write file; got: $json")
+      assertEquals(filesIn(fix.outputDir).filter(_.toString.endsWith(".json")), Nil)
+    }
+  }
+
+  test("invalid mode -> isError=true") {
+    withEmptyService { fix =>
+      val res = call(tool(fix, "graphSearch"), Map("query" -> "x", "mode" -> "bogus"))
+      assert(res.isError, "expected isError=true for unknown mode value")
     }
   }
 
   test("graphSearch missing required arg -> isError=true") {
-    withEmptyService { svc =>
-      val s   = ToolHandlers.all(svc, jsonMapper).asScala.find(_.tool().name() == "graphSearch").get
-      val res = call(s, Map.empty)
+    withEmptyService { fix =>
+      val res = call(tool(fix, "graphSearch"), Map.empty)
       assert(res.isError, "expected isError=true when 'query' is missing")
     }
   }
 
   test("graphPath with single vertex -> graceful (no isError)") {
-    withEmptyService { svc =>
-      val s    = ToolHandlers.all(svc, jsonMapper).asScala.find(_.tool().name() == "graphPath").get
+    withEmptyService { fix =>
       val list = new JList[AnyRef](); list.add("x")
-      val res  = call(s, Map("vertices" -> list))
-      // QueryEngine.pathsAmong handles <2 known gracefully; result has found=false but is not an error.
+      val res  = call(tool(fix, "graphPath"), Map("vertices" -> list))
       assert(!res.isError, s"got error: ${textOf(res)}")
     }
   }
 
   test("graphVia with depth defaults") {
-    withEmptyService { svc =>
-      val s   = ToolHandlers.all(svc, jsonMapper).asScala.find(_.tool().name() == "graphVia").get
-      val res = call(s, Map("vertex" -> "nope/such/Vertex.x()."))
+    withEmptyService { fix =>
+      val res = call(tool(fix, "graphVia"), Map("vertex" -> "nope/such/Vertex.x()."))
       assert(!res.isError, s"got error: ${textOf(res)}")
       val json = textOf(res)
       assert(json.contains("\"depthIn\""), json)
@@ -95,13 +148,47 @@ class ToolHandlersSuite extends munit.FunSuite {
   }
 
   test("graphModule with arbitrary prefix") {
-    withEmptyService { svc =>
-      val s   = ToolHandlers.all(svc, jsonMapper).asScala.find(_.tool().name() == "graphModule").get
-      val res = call(s, Map("prefix" -> "any"))
+    withEmptyService { fix =>
+      val res = call(tool(fix, "graphModule"), Map("prefix" -> "any"))
       assert(!res.isError)
       val json = textOf(res)
       assert(json.contains("\"outgoing\""))
       assert(json.contains("\"incoming\""))
+    }
+  }
+
+  // -------- pure policy unit tests --------
+
+  test("ToolOutput.render auto: small inline, large -> file with summary") {
+    withEmptyService { fix =>
+      val small = ToolResult(
+        fullJson = "{\"x\": 1}",
+        nodeCount = 0,
+        edgeCount = 0,
+        found = Some(false),
+        truncated = Some(false),
+        previewNodeIds = Nil,
+      )
+      val smallOut = ToolOutput.render("graphVia", small, OutputMode.Auto, fix.outputDir)
+      assertEquals(smallOut, small.fullJson)
+
+      val bigBody = "x" * (ToolHandlers.AutoInlineThresholdBytes + 100)
+      val big = ToolResult(
+        fullJson = s"""{"payload": "$bigBody"}""",
+        nodeCount = 42,
+        edgeCount = 99,
+        found = Some(true),
+        truncated = Some(false),
+        previewNodeIds = Seq("a/B#c().", "d/E#f()."),
+      )
+      val bigOut = ToolOutput.render("graphVia", big, OutputMode.Auto, fix.outputDir)
+      assert(bigOut.contains("\"file\":"), bigOut)
+      assert(bigOut.contains("\"nodes\": 42"), bigOut)
+      assert(bigOut.contains("\"edges\": 99"), bigOut)
+      assert(bigOut.contains("\"previewNodes\":"), bigOut)
+      assert(bigOut.contains("a/B#c()."), bigOut)
+      val written = filesIn(fix.outputDir).filter(_.toString.endsWith(".json"))
+      assertEquals(written.size, 1)
     }
   }
 }

@@ -78,4 +78,18 @@ class ArgsSuite extends munit.FunSuite {
   test("regexes: non-string item throws") {
     intercept[ToolArgError](Args.regexes(map("k" -> jlist("ok", Integer.valueOf(1))), "k"))
   }
+
+  test("worktreeOpt: absent or empty -> None") {
+    assertEquals(Args.worktreeOpt(map()), None)
+    assertEquals(Args.worktreeOpt(map("worktree" -> "")), None)
+  }
+
+  test("worktreeOpt: bare name -> Some") {
+    assertEquals(Args.worktreeOpt(map("worktree" -> "cert-scheduler")), Some("cert-scheduler"))
+  }
+
+  test("worktreeOpt: path separators or .. throw") {
+    intercept[ToolArgError](Args.worktreeOpt(map("worktree" -> "../etc")))
+    intercept[ToolArgError](Args.worktreeOpt(map("worktree" -> "a/b")))
+  }
 }

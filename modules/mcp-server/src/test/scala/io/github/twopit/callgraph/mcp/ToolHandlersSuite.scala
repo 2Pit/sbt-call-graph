@@ -43,7 +43,8 @@ class ToolHandlersSuite extends munit.FunSuite {
     first.text()
   }
 
-  private def tools(fix: Fix) = ToolHandlers.all(fix.service, jsonMapper, fix.outputDir).asScala.toList
+  // pass the workspace root; the server derives outputDir = root/target/call-graph (== fix.outputDir).
+  private def tools(fix: Fix) = ToolHandlers.all(fix.service, jsonMapper, fix.workspaceRoot).asScala.toList
   private def tool(fix: Fix, name: String)    = tools(fix).find(_.tool().name() == name).get
   private def filesIn(dir: Path): Seq[Path] =
     if (!Files.isDirectory(dir)) Nil

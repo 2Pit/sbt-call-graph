@@ -32,19 +32,19 @@ object ToolHandlers {
   def all(
       service: GraphService,
       jsonMapper: McpJsonMapper,
-      outputDir: Path,
+      root: Path,
   ): java.util.List[SyncToolSpecification] = {
-    val mk = new ToolBuilder(jsonMapper, outputDir)
+    val mk = new ToolBuilder(jsonMapper, root)
     List(
-      mk.toolForceInline("graphIndex", Descriptions.graphIndex, Schemas.graphIndex) { _ =>
-        val (graph, st) = service.getGraph()
+      mk.toolForceInline("graphIndex", Descriptions.graphIndex, Schemas.graphIndex) { req =>
+        val (graph, st) = service.getGraph(Args.worktreeOpt(req.arguments()))
         JsonOutput.renderIndex(graph, st.message, st.notCompiled, st.emptyGraph)
       },
       mk.tool("graphSearch", Descriptions.graphSearch, Schemas.graphSearch) { req =>
         val args       = req.arguments()
         val query      = Args.str(args, "query")
         val maxResults = Args.int(args, "maxResults", 10)
-        val (graph, _) = service.getGraph()
+        val (graph, _) = service.getGraph(Args.worktreeOpt(args))
         val matches    = QueryEngine.search(graph, query, maxResults)
         val json       = JsonOutput.renderSearchResult(matches, query, graph)
         ToolResult(
@@ -62,7 +62,7 @@ object ToolHandlers {
         val depthIn     = Args.int(args, "depthIn", 2)
         val depthOut    = Args.int(args, "depthOut", 2)
         val filter      = Args.regexes(args, "filterOut")
-        val (graph, st) = service.getGraph()
+        val (graph, st) = service.getGraph(Args.worktreeOpt(args))
         val result      = QueryEngine.viaVertex(graph, vertex, depthIn, depthOut)
         val gr          = result.getOrElse(GraphResult.empty)
         val (fNodes, fEdges) = applyFilter(gr.nodes, gr.edges, filter)
@@ -82,7 +82,7 @@ object ToolHandlers {
         val maxDepth    = Args.int(args, "maxDepth", 8)
         val maxPaths    = Args.int(args, "maxPaths", 5)
         val filter      = Args.regexes(args, "filterOut")
-        val (graph, st) = service.getGraph()
+        val (graph, st) = service.getGraph(Args.worktreeOpt(args))
         val result      = QueryEngine.pathsAmong(graph, vertices, maxDepth, maxPaths)
         val (fNodes, fEdges) = applyFilter(result.nodes, result.edges, filter)
         val json = JsonOutput.renderPathResult(result, vertices, st.unusable, graph, filter)
@@ -97,7 +97,7 @@ object ToolHandlers {
       },
       mk.tool("graphModule", Descriptions.graphModule, Schemas.graphModule) { req =>
         val prefix     = Args.str(req.arguments(), "prefix")
-        val (graph, _) = service.getGraph()
+        val (graph, _) = service.getGraph(Args.worktreeOpt(req.arguments()))
         val result     = ModuleQuery.moduleEdges(graph, prefix)
         val json       = JsonOutput.renderModuleResult(result, prefix, graph)
         val previewIds = (result.outgoing.map(_.srcId) ++ result.incoming.map(_.tgtId)).distinct
@@ -163,7 +163,18 @@ private[mcp] object OutputMode {
   *   - decides inline vs file output based on the rendered JSON size
   *   - turns ToolArgError and uncaught exceptions into isError=true results
   */
-private[mcp] final class ToolBuilder(jsonMapper: McpJsonMapper, outputDir: Path) {
+/** Resolves the on-disk overflow directory for large responses, per the optional `worktree`
+  * arg, so a worktree query's files land in that worktree's `target/call-graph` — never the
+  * main checkout's.
+  */
+private[mcp] object OutputPaths {
+  def callGraphDir(root: Path, worktree: Option[String]): Path = worktree match {
+    case Some(name) => root.resolve(".worktrees").resolve(name).resolve("target").resolve("call-graph")
+    case None       => root.resolve("target").resolve("call-graph")
+  }
+}
+
+private[mcp] final class ToolBuilder(jsonMapper: McpJsonMapper, root: Path) {
 
   /** Standard tool: subject to the output-mode policy. */
   def tool(name: String, description: String, schema: String)(
@@ -215,6 +226,7 @@ private[mcp] final class ToolBuilder(jsonMapper: McpJsonMapper, outputDir: Path)
         try {
           val mode      = if (forceInline) OutputMode.Inline else Args.mode(req.arguments())
           val r         = body(req)
+          val outputDir = OutputPaths.callGraphDir(root, Args.worktreeOpt(req.arguments()))
           val text      = ToolOutput.render(name, r, mode, outputDir)
           CallToolResult.builder().addTextContent(text).isError(false).build()
         } catch {
@@ -310,12 +322,21 @@ private[mcp] object Schemas {
       |      "description": "auto (default): inline if response < 8KB, else write target/call-graph/N.json and return a summary. inline: always return full JSON. file: always write to disk."
       |    }""".stripMargin
 
+  // `worktree` snippet is shared by all tools (incl. graphIndex). Default = main checkout only.
+  private val worktreeProp: String =
+    """    "worktree": {
+      |      "type": "string",
+      |      "description": "Optional git worktree name under .worktrees/. Default: serve the MAIN checkout only — sibling worktrees are excluded so their semanticdb never contaminates the graph. Set to a worktree name to query THAT worktree in isolation (and write overflow files to its own target/call-graph)."
+      |    }""".stripMargin
+
   val graphIndex: String =
-    """{
-      |  "type": "object",
-      |  "properties": {},
-      |  "additionalProperties": false
-      |}""".stripMargin
+    s"""{
+       |  "type": "object",
+       |  "properties": {
+       |$worktreeProp
+       |  },
+       |  "additionalProperties": false
+       |}""".stripMargin
 
   val graphSearch: String =
     s"""{
@@ -323,7 +344,8 @@ private[mcp] object Schemas {
        |  "properties": {
        |    "query":      { "type": "string", "description": "Substring of FQN or displayName (case-sensitive)." },
        |    "maxResults": { "type": "integer", "description": "Maximum matches to return. Default kept low because graphSearch is intentionally noisy — even a unique class name typically matches 40+ vertices (vals, lambdas, inner methods).", "default": 10 },
-       |$modeProp
+       |$modeProp,
+       |$worktreeProp
        |  },
        |  "required": ["query"],
        |  "additionalProperties": false
@@ -337,7 +359,8 @@ private[mcp] object Schemas {
        |    "depthIn":   { "type": "integer", "default": 2, "description": "BFS hops backward (callers)." },
        |    "depthOut":  { "type": "integer", "default": 2, "description": "BFS hops forward (callees)." },
        |    "filterOut": { "type": "array", "items": { "type": "string" }, "description": "Regexes; matching node IDs are excluded." },
-       |$modeProp
+       |$modeProp,
+       |$worktreeProp
        |  },
        |  "required": ["vertex"],
        |  "additionalProperties": false
@@ -351,7 +374,8 @@ private[mcp] object Schemas {
        |    "maxDepth":  { "type": "integer", "default": 8,  "description": "Maximum DFS depth per path. If you get no paths, raise to 15–20." },
        |    "maxPaths":  { "type": "integer", "default": 5,  "description": "Maximum number of paths collected. If `truncated: true` and you need more, raise to 20–100." },
        |    "filterOut": { "type": "array", "items": { "type": "string" }, "description": "Regexes; matching node IDs are excluded." },
-       |$modeProp
+       |$modeProp,
+       |$worktreeProp
        |  },
        |  "required": ["vertices"],
        |  "additionalProperties": false
@@ -362,7 +386,8 @@ private[mcp] object Schemas {
        |  "type": "object",
        |  "properties": {
        |    "prefix": { "type": "string", "description": "File-path substring identifying the module. Edges where one side is inside and the other outside are returned." },
-       |$modeProp
+       |$modeProp,
+       |$worktreeProp
        |  },
        |  "required": ["prefix"],
        |  "additionalProperties": false
@@ -539,6 +564,19 @@ private[mcp] object Args {
           throw new ToolArgError(s"$key must be an array of regex strings, got non-string item")
         items.collect { case s: String => s.r }
       case Some(other) => throw new ToolArgError(s"$key must be an array of regex strings, got $other")
+    }
+
+  /** Parse the optional `worktree` arg. Must be a bare directory name (no separators / `..`)
+    * so it can only ever resolve under `.worktrees/`. Empty / absent => None (main checkout).
+    */
+  def worktreeOpt(args: java.util.Map[String, AnyRef]): Option[String] =
+    Option(args).flatMap(a => Option(a.get("worktree"))) match {
+      case None | Some("")               => None
+      case Some(s: String) =>
+        if (s.contains("/") || s.contains("\\") || s.contains(".."))
+          throw new ToolArgError(s"worktree must be a bare directory name under .worktrees/, got '$s'")
+        Some(s)
+      case Some(other) => throw new ToolArgError(s"worktree must be a string, got $other")
     }
 
   /** Parse the optional `mode` arg controlling inline vs file output. Default Auto. */

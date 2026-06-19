@@ -30,8 +30,27 @@ final class GraphService(
     explicitSemanticdbDirs: Seq[Path],
 ) {
 
-  def getGraph(): (LoadedGraph, GraphStatus) = {
-    val dirs = if (explicitSemanticdbDirs.nonEmpty) explicitSemanticdbDirs else discoverSemanticdbDirs(workspaceRoot)
+  /** `worktree = None` serves the main checkout only — `.worktrees/` is excluded so semanticdb
+    * from sibling branches never merges into one contaminated graph. `worktree = Some(name)`
+    * scopes the scan to `.worktrees/<name>/` and resolves sources against that worktree.
+    */
+  def getGraph(worktree: Option[String] = None): (LoadedGraph, GraphStatus) = {
+    val scope = worktree match {
+      case Some(name) =>
+        val base = workspaceRoot.resolve(".worktrees")
+        val wt   = base.resolve(name).normalize()
+        if (!wt.startsWith(base) || !Files.isDirectory(wt))
+          return (
+            LoadedGraph.empty,
+            GraphStatus(s"worktree '$name' not found under .worktrees/", notCompiled = true, emptyGraph = false),
+          )
+        Scope(wt, wt, excludeWorktrees = false)
+      case None =>
+        Scope(workspaceRoot, workspaceRoot, excludeWorktrees = true)
+    }
+    val dirs =
+      if (explicitSemanticdbDirs.nonEmpty) explicitSemanticdbDirs
+      else discoverSemanticdbDirs(scope.scanRoot, scope.excludeWorktrees)
     if (dirs.isEmpty) {
       (
         LoadedGraph.empty,
@@ -39,18 +58,22 @@ final class GraphService(
       )
     } else {
       val stamp = computeStamp(dirs)
-      val graph = CallGraphState.getOrLoad(dirs, Some(workspaceRoot), stamp)
+      val graph = CallGraphState.getOrLoad(dirs, Some(scope.sourceRoot), stamp)
       val empty = graph.nodeCount == 0
       val msg   = if (empty) "loaded but empty (no METHOD symbols)" else s"loaded ${dirs.size} dir(s)"
       (graph, GraphStatus(msg, notCompiled = false, emptyGraph = empty))
     }
   }
 
-  /** Discover `target/.../meta` directories under the workspace.
+  private case class Scope(scanRoot: Path, sourceRoot: Path, excludeWorktrees: Boolean)
+
+  /** Discover `target/.../meta` directories under `root`.
     * SemanticDB writes to `target/<scala-X.Y>/meta/<package>/...`.
     * Heuristic: look for any directory named `meta` whose path also contains `target`.
+    * `excludeWorktrees` drops paths under `.worktrees/` so the main-checkout scan doesn't
+    * absorb every sibling worktree's graph.
     */
-  private[mcp] def discoverSemanticdbDirs(root: Path): Seq[Path] = {
+  private[mcp] def discoverSemanticdbDirs(root: Path, excludeWorktrees: Boolean = false): Seq[Path] = {
     if (!Files.isDirectory(root)) return Nil
     val stream = Files.walk(root, 8)
     try
@@ -61,7 +84,8 @@ final class GraphService(
           Files.isDirectory(p) &&
           p.getFileName != null &&
           p.getFileName.toString == "meta" &&
-          p.toString.contains("target")
+          p.toString.contains("target") &&
+          (!excludeWorktrees || !p.toString.contains("/.worktrees/"))
         }
         .toList
         .distinct

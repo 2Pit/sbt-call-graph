@@ -219,6 +219,22 @@ Use the `id` from a match as the vertex argument in `graphVia` or `graphPath`.
 
 ---
 
+## Worktree isolation (MCP server)
+
+The MCP server discovers `.semanticdb` by walking the `--root`. Because git worktrees live
+under `.worktrees/`, a naive walk would merge every worktree's graph into one — methods from
+sibling branches leak into results.
+
+- **Default**: the server serves the **main checkout only**; `.worktrees/` is excluded.
+- **Targeting a worktree**: pass `worktree: "<name>"` to any tool (`graphIndex`, `graphSearch`,
+  `graphVia`, `graphPath`, `graphModule`). Discovery is then scoped to `.worktrees/<name>/`,
+  sources resolve against that worktree, and large responses are written to
+  `.worktrees/<name>/target/call-graph/N.json` — never the main checkout's. The name must be a
+  bare directory under `.worktrees/` (no `/` or `..`).
+
+The graph for a worktree only exists after that worktree has been compiled (`sbt compile`) so
+its `.semanticdb` is present; otherwise `graphIndex worktree=<name>` reports `notCompiled`.
+
 ## Limitations
 
 - **`graphSearch` is case-sensitive** — use the exact casing of the class/method name

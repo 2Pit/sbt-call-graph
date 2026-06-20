@@ -59,6 +59,9 @@ sbt "analyzer/publishLocal"
 # standalone CLI (writes target/call-graph/N.dot)
 sbt "analyzer/run <semanticdb-dir> via <fqn> --format dot"
 
+# whole-graph JSON dump (all nodes+edges) over several module roots; --src populates def endLines
+sbt "analyzer/run <root1> dump --root <root2> --root <root3> --src <source-root>"
+
 # build MCP-server fat-jar (-> modules/mcp-server/target/scala-2.13/call-graph-mcp.jar)
 sbt "mcpServer/assembly"
 ```

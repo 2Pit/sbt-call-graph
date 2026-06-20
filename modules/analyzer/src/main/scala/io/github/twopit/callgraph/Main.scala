@@ -7,7 +7,7 @@ object Main {
   def main(args: Array[String]) {
     if (args.isEmpty) {
       println(
-        "Usage: run <semanticdb-dir> [path <from> <to> | via <vertex> | search <query> | module <prefix>] [--format json|dot]"
+        "Usage: run <semanticdb-dir> [path <from> <to> | via <vertex> | search <query> | module <prefix> | dump] [--root <extra-semanticdb-dir>]* [--src <source-root>] [--format json|dot]"
       )
       sys.exit(1)
     }
@@ -15,11 +15,17 @@ object Main {
     val semanticdbDir = Paths.get(args(0))
     val rest          = args.drop(1).toList
     val format        = flagStr(rest, "--format", "json")
+    val extraRoots    = flagStrMulti(rest, "--root").map(Paths.get(_))
+    val srcRoot       = Option(flagStr(rest, "--src", "")).filter(_.nonEmpty).map(Paths.get(_))
 
-    val graph  = CallGraphState.getOrLoad(Seq(semanticdbDir))
+    val graph  = CallGraphState.getOrLoad(semanticdbDir +: extraRoots, srcRoot)
     val outDir = semanticdbDir.getParent.resolve("call-graph")
 
     rest.filterNot(_.startsWith("--")) match {
+
+      case "dump" :: _ =>
+        val written = JsonOutput.writeFullGraph(graph, JsonOutput.nextOutputFile(outDir))
+        println(written.toAbsolutePath.toString)
 
       case Nil =>
         // stats mode
@@ -114,4 +120,7 @@ object Main {
     val idx = args.indexOf(flag)
     if (idx >= 0 && idx + 1 < args.size) args(idx + 1) else default
   }
+
+  private def flagStrMulti(args: List[String], flag: String): List[String] =
+    args.sliding(2).collect { case `flag` :: v :: Nil => v }.toList
 }

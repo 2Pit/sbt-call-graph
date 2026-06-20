@@ -134,6 +134,24 @@ object JsonOutput {
   def writeIndex(graph: LoadedGraph, status: String, compileError: Boolean, outFile: Path): Path =
     write(outFile, renderIndex(graph, status, compileError))
 
+  // No readHints: over the whole graph they'd be enormous and serve no reader.
+  def renderFullGraph(graph: LoadedGraph): String = {
+    val nodes = NodeSort.byLocation(graph.meta.keys, graph.meta)
+    val edges = nodes.flatMap { s =>
+      graph.out.getOrElse(s, Set.empty).toSeq.collect { case t if graph.meta.contains(t) => (s, t) }
+    }
+    val fields = Seq(
+      "nodeCount" -> nodes.size.toString,
+      "edgeCount" -> edges.size.toString,
+      "nodes"     -> arr(nodes.map(nodeJson(_, graph))),
+      "edges"     -> arr(edges.map { case (s, t) => obj("from" -> str(s), "to" -> str(t)) }),
+    )
+    obj(fields: _*)
+  }
+
+  def writeFullGraph(graph: LoadedGraph, outFile: Path): Path =
+    write(outFile, renderFullGraph(graph))
+
   // ---------------------------------------------------------------------------
   // Internal
   // ---------------------------------------------------------------------------

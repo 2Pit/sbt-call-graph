@@ -101,14 +101,13 @@ graphVia  vertex="sreo/study/StudySessionService#start()."  worktree="BS2026-123
 
 ### Output formats
 
-`graphVia` and `graphPath` support a `format` argument:
+The MCP tools are **JSON-only**. DOT (Graphviz) is available from the **CLI only**, for `path`
+and `via`, via `--format dot`. For a rich interactive picture, use `utils/arch-viz`.
 
-| Format   | Value            | Description                              |
-|----------|------------------|------------------------------------------|
-| JSON     | (default)        | Machine-readable nodes + edges           |
-| HTML     | `html`           | Interactive graph with pan/zoom/collapse  |
-| Markdown | `md`             | Mermaid flowchart for embedding in docs   |
-| DOT      | `dot`            | Graphviz DOT for external rendering       |
+| Format | Value       | Where         | Description                          |
+|--------|-------------|---------------|--------------------------------------|
+| JSON   | (default)   | MCP + CLI     | Machine-readable nodes + edges       |
+| DOT    | `dot`       | CLI path/via  | Graphviz DOT for external rendering  |
 
 ### Filtering
 

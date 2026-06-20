@@ -7,6 +7,10 @@ Implementation steps in execution order.
 > **Note (2026-06-20):** Steps 6 (SBT Plugin) and 7 (Scripted test) were implemented and then
 > removed. The SBT plugin no longer exists; querying is done through the MCP server only.
 > Scala bumped to 2.13.18, sbt to 1.12.11.
+>
+> Also removed: `HtmlOutput`, `MermaidOutput`, the `run demo` command, and the multi-format
+> flag. JSON is the shipping format (MCP + CLI); DOT remains for CLI `path`/`via` via
+> `--format dot`. Rich visualization now lives in `utils/arch-viz`.
 
 ---
 

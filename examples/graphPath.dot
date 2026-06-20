@@ -1,0 +1,30 @@
+digraph "io/github/twopit/callgraph/Main.main(). -> io/github/twopit/callgraph/GraphLoader.parseEndLines()." {
+  rankdir=LR;
+  node [shape=box style=rounded fontname=monospace fontsize=10];
+  edge [fontsize=9];
+
+  subgraph cluster_0 {
+    label="CallGraphState";
+    style=rounded;
+    n0 [label="getOrLoad" tooltip="io/github/twopit/callgraph/CallGraphState.getOrLoad()."];
+  }
+
+  subgraph cluster_1 {
+    label="GraphLoader";
+    style=rounded;
+    n1 [label="load" tooltip="io/github/twopit/callgraph/GraphLoader.load()."];
+    n2 [label="processFile" tooltip="io/github/twopit/callgraph/GraphLoader.processFile()."];
+    n3 [label="parseEndLines" tooltip="io/github/twopit/callgraph/GraphLoader.parseEndLines()."];
+  }
+
+  subgraph cluster_2 {
+    label="Main";
+    style=rounded;
+    n4 [label="main" tooltip="io/github/twopit/callgraph/Main.main()."];
+  }
+
+  n0 -> n1;
+  n1 -> n2;
+  n2 -> n3;
+  n4 -> n0;
+}

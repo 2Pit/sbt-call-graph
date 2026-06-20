@@ -119,14 +119,17 @@ graphModule  prefix="com/example/submodule"  worktree="."
 
 ## Output Formats
 
-`graphVia` and `graphPath` support a `format` argument:
+The MCP server is **JSON-only** — every tool returns machine-readable nodes + edges + readHints.
 
-| Format   | Value            | Description                              |
-|----------|------------------|------------------------------------------|
-| JSON     | (default)        | Machine-readable nodes + edges + readHints |
-| HTML     | `html`           | Interactive graph with pan/zoom/collapse  |
-| Markdown | `md`             | Mermaid flowchart for embedding in docs   |
-| DOT      | `dot`            | Graphviz DOT for external rendering       |
+DOT (Graphviz) is available from the **CLI only**, for the two graph-shaped queries, via
+`--format dot`:
+
+```sh
+sbt "analyzer/run <semanticdb-dir> path <from> <to> --format dot"
+sbt "analyzer/run <semanticdb-dir> via  <fqn>        --format dot"
+```
+
+For a rich interactive picture, render through `utils/arch-viz` instead.
 
 ---
 
@@ -197,4 +200,4 @@ Both `graphVia` and `graphPath` return the same structure:
 - `found` — `true` if any nodes were returned
 - `truncated` — `true` if `maxPaths` limit was hit
 
-Results for large responses are written to `target/call-graph/N.{json,html,dot,md}` (N auto-increments, never overwritten). The file path is included in the MCP reply summary.
+Results for large responses are written to `target/call-graph/N.json` (N auto-increments, never overwritten). The file path is included in the MCP reply summary.

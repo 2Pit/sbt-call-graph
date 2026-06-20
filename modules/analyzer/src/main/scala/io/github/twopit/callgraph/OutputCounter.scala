@@ -2,8 +2,8 @@ package io.github.twopit.callgraph
 
 import java.nio.file.{Files, Path}
 
-/** Shared counter for output files across all formats (.json, .md, etc.). Scans all numeric-named files in the
-  * directory regardless of extension, so JSON and Mermaid outputs share a single monotonically increasing sequence.
+/** Shared counter for output files across all formats (.json, .dot). Scans all numeric-named files in the
+  * directory regardless of extension, so JSON and DOT outputs share a single monotonically increasing sequence.
   */
 object OutputCounter {
 

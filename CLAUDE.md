@@ -21,11 +21,9 @@ sbt-graph-exporter/
         GraphLoader.scala            <- SemanticDB -> (out, in, meta) maps
         QueryEngine.scala            <- pathAtoB / pathsAmong / viaVertex
         CallGraphState.scala         <- @volatile var + mtime invalidation
-        JsonOutput.scala             <- JSON serialization with readHints
-        DotOutput.scala              <- Graphviz DOT output
-        HtmlOutput.scala             <- interactive HTML graph (viz.js)
-        MermaidOutput.scala          <- Mermaid flowchart output
-        Main.scala                   <- CLI: stats / path / via / demo
+        JsonOutput.scala             <- JSON serialization with readHints (default output)
+        DotOutput.scala              <- Graphviz DOT output (CLI --format dot)
+        Main.scala                   <- CLI: stats / path / via / search / module
       src/test/scala/                <- unit tests (MUnit)
     mcp-server/                      <- MCP server Scala 2.13 (depends on analyzer)
       src/main/scala/io/github/twopit/callgraph/mcp/
@@ -58,8 +56,8 @@ sbt "mcpServer/test"
 # publish the analyzer locally (only consumer is the mcp-server, via project dep)
 sbt "analyzer/publishLocal"
 
-# standalone CLI (demo HTML graph)
-sbt "analyzer/run demo graph-demo.html"
+# standalone CLI (writes target/call-graph/N.dot)
+sbt "analyzer/run <semanticdb-dir> via <fqn> --format dot"
 
 # build MCP-server fat-jar (-> modules/mcp-server/target/scala-2.13/call-graph-mcp.jar)
 sbt "mcpServer/assembly"
@@ -95,21 +93,21 @@ working inside a worktree. Omitting `worktree` (or passing `""`) is an error.
 - **startLine** — 0-based internally (as stored in SemanticDB protobuf); 1-based in JSON output.
 - **endLine** — parsed separately from `.scala` source via scalameta; falls back to startLine if source is unavailable.
 - **Caching** — three-level cache in GraphLoader (protobuf docs, scalameta endLines, per-file contributions); mtime-based invalidation via `compileAnalysisFile`.
-- **Output** — writes JSON/HTML/DOT/Mermaid to `target/call-graph/N.{json,html,dot,md}` (N auto-increments). The file path is printed to stdout.
+- **Output** — writes to `target/call-graph/N.{json,dot}` (N auto-increments). The file path is printed to stdout.
 - **Universal result type** — `GraphResult(nodes, edges, truncated)` used by both `pathAtoB`/`pathsAmong` and `viaVertex`. All output formats consume the same structure.
 
 ---
 
 ## Output Formats
 
-All query commands support `--format json|html|md|dot`:
+JSON is the default for every command. The CLI also offers DOT for the two graph-shaped
+queries (`path`, `via`) via `--format dot`; `search`/`module` are JSON-only. The MCP server is
+JSON-only. For a rich interactive picture, render the graph through `utils/arch-viz` instead.
 
-| Format   | Extension | Description                              |
-|----------|-----------|------------------------------------------|
-| JSON     | `.json`   | Machine-readable nodes + edges + readHints |
-| HTML     | `.html`   | Interactive graph with pan/zoom/collapse  |
-| Markdown | `.md`     | Mermaid flowchart                        |
-| DOT      | `.dot`    | Graphviz DOT                             |
+| Format | Extension | Commands         | Description                                |
+|--------|-----------|------------------|--------------------------------------------|
+| JSON   | `.json`   | all              | Machine-readable nodes + edges + readHints |
+| DOT    | `.dot`    | `path`, `via`    | Graphviz DOT (`--format dot`, CLI only)     |
 
 ---
 

@@ -1,46 +1,23 @@
 package io.github.twopit.callgraph
 
-import java.nio.charset.StandardCharsets
-import java.nio.file.{Files, Paths}
+import java.nio.file.{Path, Paths}
 
-/*
- * CLI entry point.
- *
- * Usage:
- *   run demo [<out-file>]
- *     -- write a self-contained demo HTML graph to <out-file> (default: graph-demo.html)
- *
- *   run <semanticdb-dir>
- *     -- print stats (node/edge counts, top callers)
- *
- *   run <semanticdb-dir> path <from> <to> [--maxDepth N] [--maxPaths N]
- *     -- find paths from <from> to <to>, write JSON to call-graph/N.json
- *
- *   run <semanticdb-dir> via <vertex> [--depth N] [--depthIn N] [--depthOut N]
- *     -- show callers/callees of <vertex>, write JSON to call-graph/N.json
- */
 object Main {
 
   def main(args: Array[String]) {
     if (args.isEmpty) {
       println(
-        "Usage: run demo | run <semanticdb-dir> [path <from> <to> | via <vertex> | search <query> | module <prefix>]"
+        "Usage: run <semanticdb-dir> [path <from> <to> | via <vertex> | search <query> | module <prefix>] [--format json|dot]"
       )
       sys.exit(1)
     }
 
-    // `demo` command needs no semanticdb-dir
-    if (args(0) == "demo") {
-      val outPath = Paths.get(if (args.length > 1) args(1) else "graph-demo.html").toAbsolutePath
-      Files.write(outPath, HtmlOutput.renderDemo().getBytes(StandardCharsets.UTF_8))
-      println(outPath.toString)
-      sys.exit(0)
-    }
-
     val semanticdbDir = Paths.get(args(0))
     val rest          = args.drop(1).toList
+    val format        = flagStr(rest, "--format", "json")
 
-    val graph = CallGraphState.getOrLoad(Seq(semanticdbDir))
+    val graph  = CallGraphState.getOrLoad(Seq(semanticdbDir))
+    val outDir = semanticdbDir.getParent.resolve("call-graph")
 
     rest.filterNot(_.startsWith("--")) match {
 
@@ -65,8 +42,14 @@ object Main {
         val maxDepth = flagInt(rest, "--maxDepth", 20)
         val maxPaths = flagInt(rest, "--maxPaths", 100)
         val result   = QueryEngine.pathsAmong(graph, Seq(from, to), maxDepth, maxPaths)
-        val outFile  = JsonOutput.nextOutputFile(semanticdbDir.getParent.resolve("call-graph"))
-        val written  = JsonOutput.writePathResult(result, Seq(from, to), compileError = false, graph, outFile)
+        val written = writeGraph(
+          format,
+          result,
+          s"$from -> $to",
+          graph,
+          outDir,
+          json => JsonOutput.writePathResult(result, Seq(from, to), compileError = false, graph, json),
+        )
         println(written.toAbsolutePath.toString)
 
       case "via" :: vertex :: _ =>
@@ -74,21 +57,27 @@ object Main {
         val depthIn  = flagInt(rest, "--depthIn", depth)
         val depthOut = flagInt(rest, "--depthOut", depth)
         val result   = QueryEngine.viaVertex(graph, vertex, depthIn, depthOut)
-        val outFile  = JsonOutput.nextOutputFile(semanticdbDir.getParent.resolve("call-graph"))
-        val written = JsonOutput.writeViaResult(result, vertex, depthIn, depthOut, compileError = false, graph, outFile)
+        val written = writeGraph(
+          format,
+          result.getOrElse(GraphResult.empty),
+          vertex,
+          graph,
+          outDir,
+          json => JsonOutput.writeViaResult(result, vertex, depthIn, depthOut, compileError = false, graph, json),
+        )
         println(written.toAbsolutePath.toString)
 
       case "search" :: query :: _ =>
+        warnDotUnsupported(format, "search")
         val maxResults = flagInt(rest, "--maxResults", 50)
         val matches    = QueryEngine.search(graph, query, maxResults)
-        val outFile    = JsonOutput.nextOutputFile(semanticdbDir.getParent.resolve("call-graph"))
-        val written    = JsonOutput.writeSearchResult(matches, query, graph, outFile)
+        val written    = JsonOutput.writeSearchResult(matches, query, graph, JsonOutput.nextOutputFile(outDir))
         println(written.toAbsolutePath.toString)
 
       case "module" :: prefix :: _ =>
+        warnDotUnsupported(format, "module")
         val result  = ModuleQuery.moduleEdges(graph, prefix)
-        val outFile = JsonOutput.nextOutputFile(semanticdbDir.getParent.resolve("call-graph"))
-        val written = JsonOutput.writeModuleResult(result, prefix, graph, outFile)
+        val written = JsonOutput.writeModuleResult(result, prefix, graph, JsonOutput.nextOutputFile(outDir))
         println(written.toAbsolutePath.toString)
 
       case other =>
@@ -97,10 +86,32 @@ object Main {
     }
   }
 
+  // DOT is only offered for path/via because only they produce a GraphResult (search/module don't).
+  private def writeGraph(
+      format: String,
+      result: GraphResult,
+      title: String,
+      graph: LoadedGraph,
+      outDir: Path,
+      writeJson: Path => Path,
+  ): Path = format match {
+    case "dot" => DotOutput.writeGraphResult(result, title, graph, DotOutput.nextOutputFile(outDir))
+    case _     => writeJson(JsonOutput.nextOutputFile(outDir))
+  }
+
+  private def warnDotUnsupported(format: String, cmd: String): Unit =
+    if (format == "dot")
+      System.err.println(s"[call-graph] --format dot supports path/via only; writing $cmd as JSON")
+
   private def flagInt(args: List[String], flag: String, default: Int): Int = {
     val idx = args.indexOf(flag)
     if (idx >= 0 && idx + 1 < args.size)
       scala.util.Try(args(idx + 1).toInt).getOrElse(default)
     else default
+  }
+
+  private def flagStr(args: List[String], flag: String, default: String): String = {
+    val idx = args.indexOf(flag)
+    if (idx >= 0 && idx + 1 < args.size) args(idx + 1) else default
   }
 }

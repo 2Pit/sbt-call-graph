@@ -39,7 +39,6 @@ object DotOutput {
     if (sepIdx > 0) afterSlash.substring(0, sepIdx) else afterSlash
   }
 
-  /** Shared graph layout used by HtmlOutput and MermaidOutput. */
   private[callgraph] case class GraphData(
       sorted: Seq[String],
       idOf: Map[String, String],

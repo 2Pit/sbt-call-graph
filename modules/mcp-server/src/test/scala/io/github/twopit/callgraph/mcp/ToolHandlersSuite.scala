@@ -24,7 +24,10 @@ class ToolHandlersSuite extends munit.FunSuite {
         val walker = Files.walk(dir).iterator()
         val all    = scala.collection.mutable.ArrayBuffer.empty[Path]
         while (walker.hasNext) all += walker.next()
-        all.reverse.foreach(p => try Files.deleteIfExists(p) catch { case _: Throwable => () })
+        all.reverse.foreach(p =>
+          try Files.deleteIfExists(p)
+          catch { case _: Throwable => () }
+        )
       } catch { case _: Throwable => () }
   }
 
@@ -44,8 +47,8 @@ class ToolHandlersSuite extends munit.FunSuite {
   }
 
   // pass the workspace root; the server derives outputDir = root/target/call-graph (== fix.outputDir).
-  private def tools(fix: Fix) = ToolHandlers.all(fix.service, jsonMapper, fix.workspaceRoot).asScala.toList
-  private def tool(fix: Fix, name: String)    = tools(fix).find(_.tool().name() == name).get
+  private def tools(fix: Fix)              = ToolHandlers.all(fix.service, jsonMapper, fix.workspaceRoot).asScala.toList
+  private def tool(fix: Fix, name: String) = tools(fix).find(_.tool().name() == name).get
   private def filesIn(dir: Path): Seq[Path] =
     if (!Files.isDirectory(dir)) Nil
     else {
@@ -63,7 +66,7 @@ class ToolHandlersSuite extends munit.FunSuite {
 
   test("graphIndex returns JSON with status, notCompiled, emptyGraph on empty workspace") {
     withEmptyService { fix =>
-      val res = call(tool(fix, "graphIndex"), Map.empty)
+      val res = call(tool(fix, "graphIndex"), Map("worktree" -> "."))
       assert(!res.isError, s"unexpected error: ${textOf(res)}")
       val json = textOf(res)
       assert(json.contains("\"status\""), json)
@@ -74,7 +77,7 @@ class ToolHandlersSuite extends munit.FunSuite {
 
   test("graphIndex ignores mode=file (always inline) and does not write a file") {
     withEmptyService { fix =>
-      val res  = call(tool(fix, "graphIndex"), Map("mode" -> "file"))
+      val res  = call(tool(fix, "graphIndex"), Map("mode" -> "file", "worktree" -> "."))
       val json = textOf(res)
       assert(!json.contains("\"file\":"), s"graphIndex should not divert to disk; got: $json")
       assertEquals(filesIn(fix.outputDir).filter(_.toString.endsWith(".json")), Nil)
@@ -83,7 +86,7 @@ class ToolHandlersSuite extends munit.FunSuite {
 
   test("graphSearch with empty graph returns inline JSON (small response, auto mode)") {
     withEmptyService { fix =>
-      val res  = call(tool(fix, "graphSearch"), Map("query" -> "Anything"))
+      val res  = call(tool(fix, "graphSearch"), Map("query" -> "Anything", "worktree" -> "."))
       val json = textOf(res)
       assert(json.contains("\"count\""), json)
       assert(json.contains("\"matches\""), json)
@@ -94,7 +97,7 @@ class ToolHandlersSuite extends munit.FunSuite {
 
   test("graphSearch with mode=file writes file and returns summary even when small") {
     withEmptyService { fix =>
-      val res  = call(tool(fix, "graphSearch"), Map("query" -> "Anything", "mode" -> "file"))
+      val res  = call(tool(fix, "graphSearch"), Map("query" -> "Anything", "mode" -> "file", "worktree" -> "."))
       val json = textOf(res)
       assert(json.contains("\"file\":"), json)
       assert(json.contains("\"previewNodes\":"), json)
@@ -108,7 +111,8 @@ class ToolHandlersSuite extends munit.FunSuite {
 
   test("mode=inline forces inline output and writes no file") {
     withEmptyService { fix =>
-      val res  = call(tool(fix, "graphVia"), Map("vertex" -> "nope/such/Vertex.x().", "mode" -> "inline"))
+      val res =
+        call(tool(fix, "graphVia"), Map("vertex" -> "nope/such/Vertex.x().", "mode" -> "inline", "worktree" -> "."))
       val json = textOf(res)
       assert(json.contains("\"depthIn\""), s"expected full JSON; got: $json")
       assert(!json.contains("\"file\":"), s"inline mode should not write file; got: $json")
@@ -118,14 +122,14 @@ class ToolHandlersSuite extends munit.FunSuite {
 
   test("invalid mode -> isError=true") {
     withEmptyService { fix =>
-      val res = call(tool(fix, "graphSearch"), Map("query" -> "x", "mode" -> "bogus"))
+      val res = call(tool(fix, "graphSearch"), Map("query" -> "x", "mode" -> "bogus", "worktree" -> "."))
       assert(res.isError, "expected isError=true for unknown mode value")
     }
   }
 
   test("graphSearch missing required arg -> isError=true") {
     withEmptyService { fix =>
-      val res = call(tool(fix, "graphSearch"), Map.empty)
+      val res = call(tool(fix, "graphSearch"), Map("worktree" -> "."))
       assert(res.isError, "expected isError=true when 'query' is missing")
     }
   }
@@ -133,14 +137,14 @@ class ToolHandlersSuite extends munit.FunSuite {
   test("graphPath with single vertex -> graceful (no isError)") {
     withEmptyService { fix =>
       val list = new JList[AnyRef](); list.add("x")
-      val res  = call(tool(fix, "graphPath"), Map("vertices" -> list))
+      val res  = call(tool(fix, "graphPath"), Map("vertices" -> list, "worktree" -> "."))
       assert(!res.isError, s"got error: ${textOf(res)}")
     }
   }
 
   test("graphVia with depth defaults") {
     withEmptyService { fix =>
-      val res = call(tool(fix, "graphVia"), Map("vertex" -> "nope/such/Vertex.x()."))
+      val res = call(tool(fix, "graphVia"), Map("vertex" -> "nope/such/Vertex.x().", "worktree" -> "."))
       assert(!res.isError, s"got error: ${textOf(res)}")
       val json = textOf(res)
       assert(json.contains("\"depthIn\""), json)
@@ -150,7 +154,7 @@ class ToolHandlersSuite extends munit.FunSuite {
 
   test("graphModule with arbitrary prefix") {
     withEmptyService { fix =>
-      val res = call(tool(fix, "graphModule"), Map("prefix" -> "any"))
+      val res = call(tool(fix, "graphModule"), Map("prefix" -> "any", "worktree" -> "."))
       assert(!res.isError)
       val json = textOf(res)
       assert(json.contains("\"outgoing\""))

@@ -1,131 +1,148 @@
 # sbt-call-graph — Usage Guide
 
-SBT plugin for building a call graph of a Scala project and navigating it via `sbtn` commands.
+Analyzer + MCP server for building a call graph of a Scala project and querying it via MCP tool calls.
 
 ---
 
 ## Setup
 
-### 1. Add to your project
+### 1. Build the MCP server jar
 
-`project/plugins.sbt`:
-
-```scala
-addSbtPlugin("io.github.2pit" % "sbt-call-graph" % "<version>")
+```sh
+cd utils/sbt-graph-exporter
+sbt mcpServer/assembly
+# produces modules/mcp-server/target/scala-2.13/call-graph-mcp.jar
 ```
 
-`build.sbt` — enable on the module you want to analyze:
+### 2. Register with Claude Code
 
-```scala
-lazy val myModule = project
-  .enablePlugins(CallGraphPlugin)
+Add to `.mcp.json` or `~/.claude.json`:
+
+```json
+{
+  "mcpServers": {
+    "call-graph": {
+      "command": "java",
+      "args": [
+        "-jar", "/abs/path/to/call-graph-mcp.jar",
+        "--root", "/abs/path/to/your/workspace"
+      ]
+    }
+  }
+}
 ```
 
-### 2. Enable SemanticDB
+### 3. Enable SemanticDB in the target project
 
-SemanticDB must be enabled for the compiler to produce `.semanticdb` files. If you use scalafix, it's already enabled. Otherwise:
+SemanticDB must be enabled for the compiler to produce `.semanticdb` files. If you use scalafix, it's already enabled. Otherwise add to `build.sbt`:
 
 ```scala
 semanticdbEnabled := true
 ```
 
-Then compile:
+Then compile the target project:
 
-```
-compile
+```sh
+sbt compile
 ```
 
 ---
 
-## Commands
+## Worktree parameter
+
+Every tool requires a **`worktree`** argument — there is no default:
+
+- `worktree: "."` — query the **main checkout**
+- `worktree: "<name>"` — query the worktree at `.worktrees/<name>/` in isolation
+
+Omitting `worktree` (or passing `""`) is an error. This prevents silently serving a stale main-checkout graph while working inside a worktree.
+
+---
+
+## Tools
 
 ### `graphIndex` — graph diagnostics
 
 Shows node and edge counts for the current cached graph.
 
 ```
-myModule/graphIndex
+graphIndex  worktree="."
 ```
 
 ---
 
-### `graphVia <vertex>` — neighbourhood
+### `graphVia` — neighbourhood
 
 Shows what calls a method and what it calls. Returns all reachable nodes within BFS depth and the induced subgraph edges between them.
 
 ```
-myModule/graphVia com/example/MyClass#myMethod().
-myModule/graphVia com/example/MyClass#myMethod(). --depth 3
-myModule/graphVia com/example/MyClass#myMethod(). --depthIn 3 --depthOut 1
+graphVia  vertex="com/example/MyClass#myMethod()."  worktree="."
+graphVia  vertex="com/example/MyClass#myMethod()."  worktree="."  depth=3
+graphVia  vertex="com/example/MyClass#myMethod()."  worktree="."  depthIn=3  depthOut=1
 ```
 
 ---
 
-### `graphPath <v1> <v2> [<v3>...]` — paths between methods
+### `graphPath` — paths between methods
 
 DFS search for all paths between the given vertices. Accepts 2 or more vertices — paths are found between all forward pairs.
 
 ```
-myModule/graphPath com/example/A#foo(). com/example/B#bar().
-myModule/graphPath A B C --maxDepth 15 --maxPaths 50
+graphPath  vertices=["com/example/A#foo().", "com/example/B#bar()."]  worktree="."
+graphPath  vertices=["A", "B", "C"]  worktree="."  maxDepth=15  maxPaths=50
 ```
 
 Defaults: `maxDepth=20`, `maxPaths=100`.
 
 ---
 
-### `graphSearch <query>` — find vertices by name
+### `graphSearch` — find vertices by name
 
 Case-sensitive substring search on FQN and displayName.
 
 ```
-myModule/graphSearch MyClassName
-myModule/graphSearch MyClassName --maxResults 20
+graphSearch  query="MyClassName"  worktree="."
+graphSearch  query="MyClassName"  worktree="."  maxResults=20
 ```
 
 ---
 
-### `graphModule <path-prefix>` — cross-module coupling
+### `graphModule` — cross-module coupling
 
 Shows all call edges that cross the boundary of a module identified by file path prefix.
 
 ```
-myModule/graphModule com/example/submodule
+graphModule  prefix="com/example/submodule"  worktree="."
 ```
 
 ---
 
 ## Output Formats
 
-All query commands support `--format`:
+`graphVia` and `graphPath` support a `format` argument:
 
-```
-myModule/graphVia com/example/A#foo(). --format html
-myModule/graphPath A B --format md
-```
-
-| Format   | Flag             | Description                              |
+| Format   | Value            | Description                              |
 |----------|------------------|------------------------------------------|
 | JSON     | (default)        | Machine-readable nodes + edges + readHints |
-| HTML     | `--format html`  | Interactive graph with pan/zoom/collapse  |
-| Markdown | `--format md`    | Mermaid flowchart for embedding in docs   |
-| DOT      | `--format dot`   | Graphviz DOT for external rendering       |
+| HTML     | `html`           | Interactive graph with pan/zoom/collapse  |
+| Markdown | `md`             | Mermaid flowchart for embedding in docs   |
+| DOT      | `dot`            | Graphviz DOT for external rendering       |
 
 ---
 
 ## Filtering
 
-Use `--filterOut` to exclude nodes matching regex patterns (comma-separated):
+Use `filterOut` to exclude nodes matching regex patterns (comma-separated):
 
 ```
-myModule/graphVia com/example/A#foo(). --filterOut "com/example/util/.*,com/example/logging/.*"
+graphVia  vertex="com/example/A#foo()."  worktree="."  filterOut="com/example/util/.*,com/example/logging/.*"
 ```
 
 ---
 
 ## FQN Format
 
-The plugin uses SemanticDB symbol format:
+Uses SemanticDB symbol format:
 
 | Element       | Separator | Example            |
 |---------------|-----------|--------------------|
@@ -138,7 +155,7 @@ Full example: `com/example/MyClass#myMethod().`
 
 **How to find the exact FQN:**
 
-1. Run `graphSearch <name>` — returns all vertices matching the substring
+1. Run `graphSearch query="<name>" worktree="."` — returns all vertices matching the substring
 2. Pick the `id` from the result and use it in `graphVia` / `graphPath`
 
 **Notes:**
@@ -151,7 +168,7 @@ Full example: `com/example/MyClass#myMethod().`
 
 ## Caching
 
-The graph is loaded on the first invocation of any task and cached in memory within the SBT daemon. After `compile`, the cache is invalidated automatically via the `compileAnalysisFile` mtime. Only files that changed are re-processed (three-level per-file cache).
+The graph is loaded on the first invocation of any tool and cached in memory within the MCP server process. After `compile`, the cache is invalidated automatically via the `compileAnalysisFile` mtime. Only files that changed are re-processed (three-level per-file cache).
 
 ---
 
@@ -178,6 +195,6 @@ Both `graphVia` and `graphPath` return the same structure:
 
 - `readHints` groups nodes by file and merges line ranges within 10 lines of each other
 - `found` — `true` if any nodes were returned
-- `truncated` — `true` if `--maxPaths` limit was hit
+- `truncated` — `true` if `maxPaths` limit was hit
 
-Results are written to `target/call-graph/N.{json,html,dot,md}` (N auto-increments, never overwritten). The file path is printed to stdout.
+Results for large responses are written to `target/call-graph/N.{json,html,dot,md}` (N auto-increments, never overwritten). The file path is included in the MCP reply summary.

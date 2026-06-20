@@ -1,89 +1,119 @@
 # sbt-call-graph
 
-[![Maven Central](https://img.shields.io/maven-central/v/io.github.2pit/sbt-call-graph_2.12_1.0)](https://central.sonatype.com/artifact/io.github.2pit/sbt-call-graph_2.12_1.0)
-
-An SBT plugin that builds a method-level call graph from SemanticDB and lets you query it without leaving the SBT shell.
+A Scala analyzer + MCP server that builds a method-level call graph from SemanticDB and lets you query it via Model Context Protocol tool calls.
 
 ## What it does
 
 - Parses `.semanticdb` files produced by the Scala compiler
 - Builds an in-memory directed graph of method calls
-- Provides SBT tasks to query paths, neighbourhoods, and cross-module edges
+- Exposes five MCP tools to query paths, neighbourhoods, and cross-module edges
 - Outputs JSON, interactive HTML, Mermaid, or Graphviz DOT
 
-## Setup
+## Modules
 
-Add to your project's `project/plugins.sbt`:
+Two modules:
 
-```scala
-addSbtPlugin("io.github.2pit" % "sbt-call-graph" % "<version>")
+- **`analyzer`** — core library + standalone CLI (`analyzer/run`)
+- **`mcp-server`** — MCP server that wraps the analyzer; this is the primary query interface
+
+## MCP Server
+
+The `mcp-server` module exposes the analyzer as a [Model Context Protocol](https://modelcontextprotocol.io/) server so Claude (and other MCP clients) can issue call-graph queries as native tool calls.
+
+Five tools are exposed: `graphIndex`, `graphSearch`, `graphVia`, `graphPath`, `graphModule`.
+
+### Build
+
+```sh
+sbt mcpServer/assembly
+# produces modules/mcp-server/target/scala-2.13/call-graph-mcp.jar (~43 MB)
 ```
 
-Enable on the module you want to analyze in `build.sbt`:
+### Register with Claude Code
 
-```scala
-lazy val myModule = project
-  .enablePlugins(CallGraphPlugin)
+Add to `.mcp.json` (workspace) or `~/.claude.json` (global):
+
+```json
+{
+  "mcpServers": {
+    "call-graph": {
+      "command": "java",
+      "args": [
+        "-jar", "/abs/path/to/call-graph-mcp.jar",
+        "--root", "/abs/path/to/your/workspace"
+      ]
+    }
+  }
+}
 ```
 
-SemanticDB generation must be enabled (already the case if you use scalafix):
+Optional: pass `--semanticdb-dir <path>` (repeatable) to override discovery. Without it the server walks `<root>` for `target/**/meta` directories.
 
-```scala
-semanticdbEnabled := true
-```
+The server requires `.semanticdb` files. If you see `compileError: true` in the response, run `sbt compile` in the workspace first.
 
-## Commands
+### Worktree parameter
 
-All commands run inside the SBT shell and trigger incremental compilation automatically.
+Every tool takes a **required** `worktree` parameter — there is no default:
+
+- `worktree: "."` — query the **main checkout**
+- `worktree: "<name>"` — query the worktree at `.worktrees/<name>/` in isolation
+
+Omitting `worktree` (or passing `""`) is an error. This prevents silently serving a stale main-checkout graph while working inside a worktree.
+
+### Output mode (context economy)
+
+Tool replies are governed by a `mode` argument — `auto` (default), `inline`, or `file` — applied to every tool except `graphIndex` (always inline).
+
+- **auto** — small responses (< 8 KB) are returned inline as JSON. Larger responses are written to `<root>/target/call-graph/N.json` and the MCP reply is replaced by a short summary:
+
+  ```json
+  {
+    "file": "/abs/path/target/call-graph/7.json",
+    "found": true,
+    "truncated": false,
+    "nodes": 142,
+    "edges": 318,
+    "previewNodes": ["sreo/study/StudySessionService#start().", "..."],
+    "readHints": ["jq -r '.nodes[] | .displayName' …", "jq '.edges[]' …"],
+    "note": "response written to disk; read with jq <file>. Pass mode=\"inline\" to inline."
+  }
+  ```
+
+- **inline** — always return full JSON (escape hatch for debugging / small known queries).
+- **file** — always write to disk (escape hatch for queries you know are large).
+
+`OutputCounter` increments file names monotonically; the directory is cleaned by `sbt clean`.
+
+### Logs
+
+The MCP stdio transport owns stdout, so all server logs go to stderr.
+
+## Commands (MCP tools)
 
 ```
 # Graph diagnostics (node/edge counts)
-myModule/graphIndex
+graphIndex  worktree="."
 
 # Search for a vertex by name
-myModule/graphSearch MyClassName
+graphSearch  query="MyClassName"  worktree="."
 
 # Neighbourhood — who calls a method and what it calls
-myModule/graphVia com/example/MyClass#myMethod().
-myModule/graphVia com/example/MyClass#myMethod(). --depth 3
-myModule/graphVia com/example/MyClass#myMethod(). --depthIn 3 --depthOut 1
+graphVia  vertex="com/example/MyClass#myMethod()."  worktree="."
+graphVia  vertex="com/example/MyClass#myMethod()."  worktree="."  depth=3
+graphVia  vertex="com/example/MyClass#myMethod()."  worktree="."  depthIn=3  depthOut=1
 
 # Paths between methods (2 or more vertices)
-myModule/graphPath com/example/A#foo(). com/example/B#bar().
-myModule/graphPath A B C --maxDepth 15 --maxPaths 50
+graphPath  vertices=["com/example/A#foo().", "com/example/B#bar()."]  worktree="."
+graphPath  vertices=["A", "B", "C"]  worktree="."  maxDepth=15  maxPaths=50
 
 # Cross-module coupling
-myModule/graphModule com/example/submodule
+graphModule  prefix="com/example/submodule"  worktree="."
 
-# Output format (default: json)
-myModule/graphVia com/example/A#foo(). --format html
-myModule/graphVia com/example/A#foo(). --format md
-myModule/graphVia com/example/A#foo(). --format dot
-
-# Filter out noisy nodes
-myModule/graphVia com/example/A#foo(). --filterOut "com/example/util/.*"
+# Target a worktree instead of the main checkout
+graphVia  vertex="com/example/A#foo()."  worktree="BS2026-1234"
 ```
 
 Results are written to `target/call-graph/N.{json,html,dot,md}`. The file path is printed to stdout.
-
-Use `--console` (or `-C`) on any command to print JSON to stdout instead of writing a file.
-
-## Settings
-
-Override defaults in `build.sbt`:
-
-```scala
-graphDefaultDepth    := 3          // default --depth for graphVia (default: 2)
-graphDefaultDepthIn  := Some(1)    // default --depthIn (default: None → uses graphDefaultDepth)
-graphDefaultDepthOut := Some(5)    // default --depthOut (default: None → uses graphDefaultDepth)
-graphDefaultMaxDepth := 15         // default --maxDepth for graphPath (default: 20)
-graphDefaultMaxPaths := 50         // default --maxPaths for graphPath (default: 100)
-graphDefaultFormat   := "html"     // default --format: json, html, md, dot (default: json)
-graphOutputDir       := "graphs"   // subdirectory under target/ (default: call-graph)
-graphConsole         := true       // print to console instead of file (default: false)
-```
-
-Command-line flags always take priority over settings.
 
 ## FQN Format
 
@@ -123,7 +153,7 @@ Use `graphSearch` to find the exact FQN when you don't know it.
 
 ## Examples
 
-The [`examples/`](examples/) directory contains real output generated by running the plugin on its own codebase:
+The [`examples/`](examples/) directory contains real output generated by running the analyzer on its own codebase:
 
 - [`graphVia.html`](examples/graphVia.html) — interactive HTML graph showing the neighbourhood of `CallGraphState.getOrLoad` (open in a browser)
 - [`graphVia.json`](examples/graphVia.json) — same query as JSON with `readHints` for efficient source reading
@@ -152,69 +182,6 @@ flowchart LR
   n4 --> n0
   n4 --> n5
 ```
-
-## MCP Server
-
-The `mcp-server` module exposes the analyzer as a [Model Context Protocol](https://modelcontextprotocol.io/) server so Claude (and other MCP clients) can issue call-graph queries as native tool calls — no `/skill` invocation required.
-
-Five tools are exposed: `graphIndex`, `graphSearch`, `graphVia`, `graphPath`, `graphModule` — the same five surfaces as the SBT plugin, but consuming `.semanticdb` files directly without going through SBT.
-
-### Build
-
-```sh
-sbt mcpServer/assembly
-# produces modules/mcp-server/target/scala-2.12/call-graph-mcp.jar (~43 MB)
-```
-
-### Register with Claude Code
-
-Add to `.mcp.json` (workspace) or `~/.claude.json` (global):
-
-```json
-{
-  "mcpServers": {
-    "call-graph": {
-      "command": "java",
-      "args": [
-        "-jar", "/abs/path/to/call-graph-mcp.jar",
-        "--root", "/abs/path/to/your/workspace"
-      ]
-    }
-  }
-}
-```
-
-Optional: pass `--semanticdb-dir <path>` (repeatable) to override discovery. Without it the server walks `<root>` for `target/**/meta` directories.
-
-The server requires `.semanticdb` files. If you see `compileError: true` in the response, run `sbt compile` in the workspace first.
-
-### Output mode (context economy)
-
-Tool replies are governed by a `mode` argument — `auto` (default), `inline`, or `file` — applied to every tool except `graphIndex` (always inline).
-
-- **auto** — small responses (< 8 KB) are returned inline as JSON. Larger responses are written to `<root>/target/call-graph/N.json` and the MCP reply is replaced by a short summary:
-
-  ```json
-  {
-    "file": "/abs/path/target/call-graph/7.json",
-    "found": true,
-    "truncated": false,
-    "nodes": 142,
-    "edges": 318,
-    "previewNodes": ["sreo/study/StudySessionService#start().", "..."],
-    "readHints": ["jq -r '.nodes[] | .displayName' …", "jq '.edges[]' …"],
-    "note": "response written to disk; read with jq <file>. Pass mode=\"inline\" to inline."
-  }
-  ```
-
-- **inline** — always return full JSON (escape hatch for debugging / small known queries).
-- **file** — always write to disk (escape hatch for queries you know are large).
-
-`OutputCounter` increments file names monotonically; the directory is cleaned by `sbt clean`.
-
-### Logs
-
-The MCP stdio transport owns stdout, so all server logs go to stderr.
 
 ## Limitations
 

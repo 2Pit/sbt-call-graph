@@ -34,7 +34,7 @@ object GraphLoader {
 
     val projectRoot: Option[Path] = sourceRoot.orElse {
       semanticdbRoots.headOption
-        .map(_.getParent.getParent.getParent.getParent)
+        .flatMap(p => (1 to 4).foldLeft(Option(p))((acc, _) => acc.flatMap(x => Option(x.getParent))))
         .filter(Files.isDirectory(_))
     }
 

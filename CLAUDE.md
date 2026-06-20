@@ -1,6 +1,8 @@
 # CLAUDE.md — sbt-call-graph
 
-SBT plugin + standalone analyzer for building and querying call graphs of Scala projects via SemanticDB.
+Standalone analyzer + MCP server for building and querying method-level call graphs of Scala
+projects via SemanticDB. (A former SBT plugin was removed — querying is now done through the MCP
+server, not sbt tasks.)
 
 ---
 
@@ -8,12 +10,12 @@ SBT plugin + standalone analyzer for building and querying call graphs of Scala 
 
 ```
 sbt-graph-exporter/
-  build.sbt                          <- root build (2 modules: analyzer, plugin)
+  build.sbt                          <- root build (2 modules: analyzer, mcp-server)
   project/
-    build.properties                 <- sbt 1.10.7
-    plugins.sbt                      <- sbt-scalafmt
+    build.properties                 <- sbt 1.12.11
+    plugins.sbt                      <- scalafmt, dynver, assembly, buildinfo
   modules/
-    analyzer/                        <- standalone Scala 2.12 library (core)
+    analyzer/                        <- standalone Scala 2.13 library (core)
       src/main/scala/io/github/twopit/callgraph/
         model.scala                  <- NodeMeta, LoadedGraph, GraphResult
         GraphLoader.scala            <- SemanticDB -> (out, in, meta) maps
@@ -25,12 +27,7 @@ sbt-graph-exporter/
         MermaidOutput.scala          <- Mermaid flowchart output
         Main.scala                   <- CLI: stats / path / via / demo
       src/test/scala/                <- unit tests (MUnit)
-    plugin/                          <- SBT plugin Scala 2.12
-      src/main/scala/
-        CallGraphPlugin.scala    <- AutoPlugin with graphPath/graphVia/graphSearch/graphModule/graphIndex tasks
-      src/sbt-test/
-        call-graph/basic/            <- scripted test
-    mcp-server/                      <- MCP server Scala 2.12 (depends on analyzer)
+    mcp-server/                      <- MCP server Scala 2.13 (depends on analyzer)
       src/main/scala/io/github/twopit/callgraph/mcp/
         Main.scala               <- entry point, stdio transport, McpServer wiring
         GraphService.scala       <- semanticdb-dir discovery + mtime stamp -> CallGraphState
@@ -42,32 +39,51 @@ sbt-graph-exporter/
     usage.md                         <- user-facing usage guide
 ```
 
+Scala 2.13.18 / sbt 1.12.11 — kept in lockstep with the `blank-slate-server` backend so the
+analyzer compiles against the same toolchain it analyses. (The version was previously pinned to
+2.12 only because sbt plugins must be 2.12; that constraint is gone with the plugin.)
+
 ---
 
 ## Build & Run
 
 ```sh
 # compile everything
-sbtn compile
+sbt compile
 
 # run tests
-sbtn "analyzer/test"
+sbt "analyzer/test"
+sbt "mcpServer/test"
 
-# publish both modules locally
-sbtn "analyzer/publishLocal; plugin/publishLocal"
-
-# scripted tests (publishes analyzer first)
-sbtn "analyzer/publishLocal; plugin/scripted"
+# publish the analyzer locally (only consumer is the mcp-server, via project dep)
+sbt "analyzer/publishLocal"
 
 # standalone CLI (demo HTML graph)
-sbtn "analyzer/run demo graph-demo.html"
+sbt "analyzer/run demo graph-demo.html"
 
-# build MCP-server fat-jar (-> modules/mcp-server/target/scala-2.12/call-graph-mcp.jar)
-sbtn "mcpServer/assembly"
-
-# run MCP-server tests
-sbtn "mcpServer/test"
+# build MCP-server fat-jar (-> modules/mcp-server/target/scala-2.13/call-graph-mcp.jar)
+sbt "mcpServer/assembly"
 ```
+
+The MCP server is wired into the monorepo via `utils/mcp/mcp.json`, which runs the assembled jar
+at `modules/mcp-server/target/scala-2.13/call-graph-mcp.jar`. After any change that affects the
+server, re-run `mcpServer/assembly` and reconnect the call-graph MCP (a stale jar is loaded until
+the MCP process restarts).
+
+---
+
+## MCP Tools
+
+Five tools: `graphIndex` (diagnostics), `graphSearch`, `graphVia`, `graphPath`, `graphModule`.
+
+Every tool takes a **required** `worktree` selector — there is no default:
+
+- `worktree: "."` queries the **main checkout**.
+- `worktree: "<name>"` queries the worktree at `.worktrees/<name>/` in isolation (its overflow
+  files land in that worktree's `target/call-graph`).
+
+Requiring an explicit choice prevents silently serving a stale main-checkout graph while you are
+working inside a worktree. Omitting `worktree` (or passing `""`) is an error.
 
 ---
 
@@ -126,3 +142,5 @@ Files are named monotonically via `OutputCounter`. Cleanup: `sbt clean` of the r
 Knobs live in `ToolHandlers.scala`:
 - `AutoInlineThresholdBytes = 8192`
 - `PreviewNodeLimit = 10`
+</content>
+</invoke>

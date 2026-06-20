@@ -4,6 +4,10 @@
 
 Implementation steps in execution order.
 
+> **Note (2026-06-20):** Steps 6 (SBT Plugin) and 7 (Scripted test) were implemented and then
+> removed. The SBT plugin no longer exists; querying is done through the MCP server only.
+> Scala bumped to 2.13.18, sbt to 1.12.11.
+
 ---
 
 ## Step 0 — Phase 0: SemanticDB exploration (prerequisite)
@@ -111,7 +115,7 @@ Implementation steps in execution order.
 | 3 — CallGraphState | done |
 | 4 — Output (JSON, DOT, HTML, Mermaid) | done |
 | 5 — Main CLI | done |
-| 6 — SBT Plugin | done |
-| 7 — Scripted test | done |
+| 6 — SBT Plugin | done → removed |
+| 7 — Scripted test | done → removed |
 | 8 — Integration | done |
 | 11 — Synthetics (for-comprehension edges) | done |

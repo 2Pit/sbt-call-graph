@@ -3,6 +3,9 @@
 **Date:** 2026-03-03
 **Status:** spec (phases 1–6 complete)
 
+> **Note (2026-06-20):** The SBT plugin (step 6) was subsequently removed. Querying is now done
+> through the MCP server only — not via sbt tasks. Scala version bumped to 2.13.18, sbt to 1.12.11.
+
 ---
 
 ## Goal
@@ -62,7 +65,7 @@ Give LLMs (and developers) the ability to find call paths between methods in a S
 | Path search         | Custom DFS with visited set + depth/paths counter                                       |
 | JSON                | Hand-rolled serialization (no dependencies)                                             |
 | Output              | `target/call-graph/N.json` (path printed to stdout)                                    |
-| Interface           | SBT tasks, invoked via `sbtn`                                                           |
+| Interface           | MCP server (five tools: graphIndex/Search/Via/Path/Module)                              |
 
 ### How SemanticDB provides the call graph
 

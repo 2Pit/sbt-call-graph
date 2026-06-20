@@ -1,8 +1,8 @@
 # call-graph — Claude Skill Guide
 
-Use the `sbt-call-graph` plugin to navigate the call graph of any Scala project when you need to understand how methods relate without reading entire files.
+Use the `call-graph` MCP server to navigate the call graph of any Scala project when you need to understand how methods relate without reading entire files.
 
-The plugin loads SemanticDB from **all enabled modules** automatically — no need to switch projects.
+The server loads SemanticDB from the target project automatically — no SBT tasks required.
 
 ---
 
@@ -11,12 +11,12 @@ The plugin loads SemanticDB from **all enabled modules** automatically — no ne
 **User mentions a single method or class**
 → Run `graphVia` to see what calls it and what it calls.
 > "Why is `QueryEngine#viaVertex` returning empty results?"
-> → `graphVia io/github/twopit/callgraph/QueryEngine.viaVertex().` shows the neighbourhood of that method.
+> → `graphVia vertex="io/github/twopit/callgraph/QueryEngine.viaVertex()." worktree="."` shows the neighbourhood of that method.
 
 **User mentions multiple methods or asks about data/control flow**
 → Run `graphPath` to find how methods reach each other. Accepts 2 or more vertices — paths are found between all pairs.
 > "How does the graph loading flow into the query engine?"
-> → `graphPath io/github/twopit/callgraph/GraphLoader.load(+1). io/github/twopit/callgraph/QueryEngine.viaVertex().`
+> → `graphPath vertices=["io/github/twopit/callgraph/GraphLoader.load(+1).", "io/github/twopit/callgraph/QueryEngine.viaVertex()."] worktree="."`
 
 **User wants to refactor or split a component**
 → Run `graphVia` on each candidate method. The number of edges pointing in (fan-in) shows how many callers depend on it; edges pointing out (fan-out) show how much it owns.
@@ -26,11 +26,24 @@ The plugin loads SemanticDB from **all enabled modules** automatically — no ne
 
 **FQN is unknown / vertex was not found**
 → Run `graphSearch` with a class or method name substring to find the correct FQN.
-> `graphSearch GraphLoader` returns all matching vertices with their IDs.
+> `graphSearch query="GraphLoader" worktree="."` returns all matching vertices with their IDs.
 
 **Analysing cross-module coupling**
 → Run `graphModule` with a path prefix to see all call edges that cross the module boundary.
-> `graphModule modules/analyzer` shows what the analyzer module calls outside itself and who calls into it.
+> `graphModule prefix="modules/analyzer" worktree="."` shows what the analyzer module calls outside itself and who calls into it.
+
+---
+
+## Worktree parameter
+
+Every tool requires a `worktree` argument — there is no default:
+
+- `worktree: "."` — query the **main checkout**
+- `worktree: "<name>"` — query the worktree at `.worktrees/<name>/` in isolation; overflow files land in that worktree's `target/call-graph/`
+
+Omitting `worktree` (or passing `""`) is an error. Always pass `worktree: "."` when working in the main checkout, and `worktree: "<slug>"` when working in a named worktree.
+
+The graph for a worktree only exists after that worktree has been compiled (`sbt compile`) so its `.semanticdb` is present; otherwise `graphIndex worktree="<name>"` reports `notCompiled`.
 
 ---
 
@@ -48,77 +61,68 @@ SemanticDB symbol format: `package/ClassOrObject#method().`
 Full example: `io/github/twopit/callgraph/QueryEngine.viaVertex().`
 
 **If the exact FQN is unknown:**
-1. Run `graphSearch <name>` — returns all vertices whose FQN or displayName contains the substring.
+1. Run `graphSearch query="<name>" worktree="."` — returns all vertices whose FQN or displayName contains the substring.
 2. Pick the `id` from the matching entry and use it in `graphVia` / `graphPath`.
 3. If `graphSearch` returns nothing — `Grep` the source for the class name to confirm the package, then compose the FQN from the table above.
 
 ---
 
-## Commands
-
-All commands are run inside the SBT shell on the module with the plugin enabled:
+## Tools
 
 ```
 # check graph is loaded (node/edge counts)
-myModule/graphIndex
+graphIndex  worktree="."
 
 # search for a vertex by class/method name (use when FQN is unknown)
-myModule/graphSearch GraphLoader
-myModule/graphSearch GraphLoader --maxResults 20
+graphSearch  query="GraphLoader"  worktree="."
+graphSearch  query="GraphLoader"  worktree="."  maxResults=20
 
-# neighbourhood of a method (default --depth 2 in both directions)
-myModule/graphVia io/github/twopit/callgraph/QueryEngine.viaVertex().
+# neighbourhood of a method (default depth 2 in both directions)
+graphVia  vertex="io/github/twopit/callgraph/QueryEngine.viaVertex()."  worktree="."
 
 # asymmetric depth: 3 hops for callers, 1 hop for callees
-myModule/graphVia io/github/twopit/callgraph/QueryEngine.viaVertex(). --depthIn 3 --depthOut 1
+graphVia  vertex="io/github/twopit/callgraph/QueryEngine.viaVertex()."  worktree="."  depthIn=3  depthOut=1
 
 # deeper exploration, same depth in both directions
-myModule/graphVia io/github/twopit/callgraph/QueryEngine.viaVertex(). --depth 4
+graphVia  vertex="io/github/twopit/callgraph/QueryEngine.viaVertex()."  worktree="."  depth=4
 
 # path between two methods
-myModule/graphPath io/github/twopit/callgraph/GraphLoader.load(+1). io/github/twopit/callgraph/CallGraphState.getOrLoad().
+graphPath  vertices=["io/github/twopit/callgraph/GraphLoader.load(+1).", "io/github/twopit/callgraph/CallGraphState.getOrLoad()."]  worktree="."
 
 # path among 3+ methods (finds paths between all pairs)
-myModule/graphPath A B C --maxDepth 15 --maxPaths 50
+graphPath  vertices=["A", "B", "C"]  worktree="."  maxDepth=15  maxPaths=50
 
 # cross-module coupling: all call edges crossing a module boundary
-myModule/graphModule modules/analyzer
-myModule/graphModule modules/plugin
+graphModule  prefix="modules/analyzer"  worktree="."
+
+# query a named worktree instead of the main checkout
+graphVia  vertex="sreo/study/StudySessionService#start()."  worktree="BS2026-1234"
 ```
 
 ### Output formats
 
-All query commands (`graphPath`, `graphVia`) support `--format`:
+`graphVia` and `graphPath` support a `format` argument:
 
-```
-myModule/graphVia io/github/twopit/callgraph/QueryEngine.viaVertex(). --format html
-myModule/graphPath A B --format md
-```
-
-| Format   | Flag             | Description                              |
+| Format   | Value            | Description                              |
 |----------|------------------|------------------------------------------|
 | JSON     | (default)        | Machine-readable nodes + edges           |
-| HTML     | `--format html`  | Interactive graph with pan/zoom/collapse  |
-| Markdown | `--format md`    | Mermaid flowchart for embedding in docs   |
-| DOT      | `--format dot`   | Graphviz DOT for external rendering       |
+| HTML     | `html`           | Interactive graph with pan/zoom/collapse  |
+| Markdown | `md`             | Mermaid flowchart for embedding in docs   |
+| DOT      | `dot`            | Graphviz DOT for external rendering       |
 
 ### Filtering
 
-Use `--filterOut` to exclude nodes matching regex patterns (comma-separated):
+Use `filterOut` to exclude nodes matching regex patterns (comma-separated):
 
 ```
-myModule/graphVia io/github/twopit/callgraph/QueryEngine.viaVertex(). --filterOut "io/github/twopit/callgraph/Output.*"
+graphVia  vertex="io/github/twopit/callgraph/QueryEngine.viaVertex()."  worktree="."  filterOut="io/github/twopit/callgraph/Output.*"
 ```
-
-Each command triggers incremental compilation automatically before querying.
-
-**Important:** the result file path is printed to stdout (last line). Timing diagnostics are only visible at debug log level (`set logLevel := Level.Debug`).
 
 ---
 
 ## Compile errors
 
-If the project fails to compile, the plugin **still runs the query** against the last successfully compiled graph and sets `"compileError": true` in the result. Always check for this flag — the graph may be stale.
+If the project fails to compile, the server **still runs the query** against the last successfully compiled graph and sets `"compileError": true` in the result. Always check for this flag — the graph may be stale.
 
 ```json
 {
@@ -206,7 +210,7 @@ Use the `id` from a match as the vertex argument in `graphVia` or `graphPath`.
     ...
   ],
   "incoming": [
-    { "from": { "id": "io/github/twopit/callgraph/CallGraphPlugin.graphViaTask().", ... },
+    { "from": { "id": "io/github/twopit/callgraph/Main.main().", ... },
       "to":   { "id": "io/github/twopit/callgraph/CallGraphState.getOrLoad().", ... } },
     ...
   ]
@@ -218,22 +222,6 @@ Use the `id` from a match as the vertex argument in `graphVia` or `graphPath`.
 - Only edges where both endpoints are known in the graph are included (stdlib/library calls excluded)
 
 ---
-
-## Worktree isolation (MCP server)
-
-The MCP server discovers `.semanticdb` by walking the `--root`. Because git worktrees live
-under `.worktrees/`, a naive walk would merge every worktree's graph into one — methods from
-sibling branches leak into results.
-
-- **Default**: the server serves the **main checkout only**; `.worktrees/` is excluded.
-- **Targeting a worktree**: pass `worktree: "<name>"` to any tool (`graphIndex`, `graphSearch`,
-  `graphVia`, `graphPath`, `graphModule`). Discovery is then scoped to `.worktrees/<name>/`,
-  sources resolve against that worktree, and large responses are written to
-  `.worktrees/<name>/target/call-graph/N.json` — never the main checkout's. The name must be a
-  bare directory under `.worktrees/` (no `/` or `..`).
-
-The graph for a worktree only exists after that worktree has been compiled (`sbt compile`) so
-its `.semanticdb` is present; otherwise `graphIndex worktree=<name>` reports `notCompiled`.
 
 ## Limitations
 

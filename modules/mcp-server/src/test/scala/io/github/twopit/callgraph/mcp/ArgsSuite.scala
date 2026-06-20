@@ -79,17 +79,21 @@ class ArgsSuite extends munit.FunSuite {
     intercept[ToolArgError](Args.regexes(map("k" -> jlist("ok", Integer.valueOf(1))), "k"))
   }
 
-  test("worktreeOpt: absent or empty -> None") {
-    assertEquals(Args.worktreeOpt(map()), None)
-    assertEquals(Args.worktreeOpt(map("worktree" -> "")), None)
+  test("worktreeArg: absent or empty throws (required)") {
+    intercept[ToolArgError](Args.worktreeArg(map()))
+    intercept[ToolArgError](Args.worktreeArg(map("worktree" -> "")))
   }
 
-  test("worktreeOpt: bare name -> Some") {
-    assertEquals(Args.worktreeOpt(map("worktree" -> "cert-scheduler")), Some("cert-scheduler"))
+  test("worktreeArg: \".\" -> None (main checkout)") {
+    assertEquals(Args.worktreeArg(map("worktree" -> ".")), None)
   }
 
-  test("worktreeOpt: path separators or .. throw") {
-    intercept[ToolArgError](Args.worktreeOpt(map("worktree" -> "../etc")))
-    intercept[ToolArgError](Args.worktreeOpt(map("worktree" -> "a/b")))
+  test("worktreeArg: bare name -> Some") {
+    assertEquals(Args.worktreeArg(map("worktree" -> "cert-scheduler")), Some("cert-scheduler"))
+  }
+
+  test("worktreeArg: path separators or .. throw") {
+    intercept[ToolArgError](Args.worktreeArg(map("worktree" -> "../etc")))
+    intercept[ToolArgError](Args.worktreeArg(map("worktree" -> "a/b")))
   }
 }

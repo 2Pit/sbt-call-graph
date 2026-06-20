@@ -47,8 +47,8 @@ class GraphServiceSuite extends munit.FunSuite {
     withTempDir { dir =>
       Files.createDirectories(dir.resolve("target/scala-2.13/meta/foo"))
       Files.createDirectories(dir.resolve(".worktrees/wt1/target/scala-2.13/meta/bar"))
-      val svc = new GraphService(dir, Nil)
-      val all = svc.discoverSemanticdbDirs(dir, excludeWorktrees = false)
+      val svc  = new GraphService(dir, Nil)
+      val all  = svc.discoverSemanticdbDirs(dir, excludeWorktrees = false)
       val main = svc.discoverSemanticdbDirs(dir, excludeWorktrees = true)
       assert(all.exists(_.toString.contains(".worktrees")), s"raw scan should see worktree dirs: $all")
       assert(!main.exists(_.toString.contains(".worktrees")), s"excluded scan must drop worktree dirs: $main")
@@ -58,8 +58,8 @@ class GraphServiceSuite extends munit.FunSuite {
 
   test("getGraph(Some(unknown)) -> notCompiled with a worktree-specific message") {
     withTempDir { dir =>
-      val svc      = new GraphService(dir, Nil)
-      val (_, st)  = svc.getGraph(Some("does-not-exist"))
+      val svc     = new GraphService(dir, Nil)
+      val (_, st) = svc.getGraph(Some("does-not-exist"))
       assert(st.notCompiled, "missing worktree should report notCompiled")
       assert(st.message.contains("worktree"), s"message should name the worktree problem: ${st.message}")
     }

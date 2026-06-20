@@ -37,14 +37,14 @@ object ToolHandlers {
     val mk = new ToolBuilder(jsonMapper, root)
     List(
       mk.toolForceInline("graphIndex", Descriptions.graphIndex, Schemas.graphIndex) { req =>
-        val (graph, st) = service.getGraph(Args.worktreeOpt(req.arguments()))
+        val (graph, st) = service.getGraph(Args.worktreeArg(req.arguments()))
         JsonOutput.renderIndex(graph, st.message, st.notCompiled, st.emptyGraph)
       },
       mk.tool("graphSearch", Descriptions.graphSearch, Schemas.graphSearch) { req =>
         val args       = req.arguments()
         val query      = Args.str(args, "query")
         val maxResults = Args.int(args, "maxResults", 10)
-        val (graph, _) = service.getGraph(Args.worktreeOpt(args))
+        val (graph, _) = service.getGraph(Args.worktreeArg(args))
         val matches    = QueryEngine.search(graph, query, maxResults)
         val json       = JsonOutput.renderSearchResult(matches, query, graph)
         ToolResult(
@@ -57,16 +57,16 @@ object ToolHandlers {
         )
       },
       mk.tool("graphVia", Descriptions.graphVia, Schemas.graphVia) { req =>
-        val args        = req.arguments()
-        val vertex      = Args.str(args, "vertex")
-        val depthIn     = Args.int(args, "depthIn", 2)
-        val depthOut    = Args.int(args, "depthOut", 2)
-        val filter      = Args.regexes(args, "filterOut")
-        val (graph, st) = service.getGraph(Args.worktreeOpt(args))
-        val result      = QueryEngine.viaVertex(graph, vertex, depthIn, depthOut)
-        val gr          = result.getOrElse(GraphResult.empty)
+        val args             = req.arguments()
+        val vertex           = Args.str(args, "vertex")
+        val depthIn          = Args.int(args, "depthIn", 2)
+        val depthOut         = Args.int(args, "depthOut", 2)
+        val filter           = Args.regexes(args, "filterOut")
+        val (graph, st)      = service.getGraph(Args.worktreeArg(args))
+        val result           = QueryEngine.viaVertex(graph, vertex, depthIn, depthOut)
+        val gr               = result.getOrElse(GraphResult.empty)
         val (fNodes, fEdges) = applyFilter(gr.nodes, gr.edges, filter)
-        val json = JsonOutput.renderViaResult(result, vertex, depthIn, depthOut, st.unusable, graph, filter)
+        val json             = JsonOutput.renderViaResult(result, vertex, depthIn, depthOut, st.unusable, graph, filter)
         ToolResult(
           fullJson = json,
           nodeCount = fNodes.size,
@@ -77,15 +77,15 @@ object ToolHandlers {
         )
       },
       mk.tool("graphPath", Descriptions.graphPath, Schemas.graphPath) { req =>
-        val args        = req.arguments()
-        val vertices    = Args.strList(args, "vertices")
-        val maxDepth    = Args.int(args, "maxDepth", 8)
-        val maxPaths    = Args.int(args, "maxPaths", 5)
-        val filter      = Args.regexes(args, "filterOut")
-        val (graph, st) = service.getGraph(Args.worktreeOpt(args))
-        val result      = QueryEngine.pathsAmong(graph, vertices, maxDepth, maxPaths)
+        val args             = req.arguments()
+        val vertices         = Args.strList(args, "vertices")
+        val maxDepth         = Args.int(args, "maxDepth", 8)
+        val maxPaths         = Args.int(args, "maxPaths", 5)
+        val filter           = Args.regexes(args, "filterOut")
+        val (graph, st)      = service.getGraph(Args.worktreeArg(args))
+        val result           = QueryEngine.pathsAmong(graph, vertices, maxDepth, maxPaths)
         val (fNodes, fEdges) = applyFilter(result.nodes, result.edges, filter)
-        val json = JsonOutput.renderPathResult(result, vertices, st.unusable, graph, filter)
+        val json             = JsonOutput.renderPathResult(result, vertices, st.unusable, graph, filter)
         ToolResult(
           fullJson = json,
           nodeCount = fNodes.size,
@@ -97,7 +97,7 @@ object ToolHandlers {
       },
       mk.tool("graphModule", Descriptions.graphModule, Schemas.graphModule) { req =>
         val prefix     = Args.str(req.arguments(), "prefix")
-        val (graph, _) = service.getGraph(Args.worktreeOpt(req.arguments()))
+        val (graph, _) = service.getGraph(Args.worktreeArg(req.arguments()))
         val result     = ModuleQuery.moduleEdges(graph, prefix)
         val json       = JsonOutput.renderModuleResult(result, prefix, graph)
         val previewIds = (result.outgoing.map(_.srcId) ++ result.incoming.map(_.tgtId)).distinct
@@ -191,8 +191,7 @@ private[mcp] final class ToolBuilder(jsonMapper: McpJsonMapper, root: Path) {
       name,
       description,
       schema,
-      req =>
-        ToolResult(body(req), nodeCount = 0, edgeCount = 0, found = None, truncated = None, previewNodeIds = Nil),
+      req => ToolResult(body(req), nodeCount = 0, edgeCount = 0, found = None, truncated = None, previewNodeIds = Nil),
       forceInline = true,
     )
 
@@ -226,7 +225,7 @@ private[mcp] final class ToolBuilder(jsonMapper: McpJsonMapper, root: Path) {
         try {
           val mode      = if (forceInline) OutputMode.Inline else Args.mode(req.arguments())
           val r         = body(req)
-          val outputDir = OutputPaths.callGraphDir(root, Args.worktreeOpt(req.arguments()))
+          val outputDir = OutputPaths.callGraphDir(root, Args.worktreeArg(req.arguments()))
           val text      = ToolOutput.render(name, r, mode, outputDir)
           CallToolResult.builder().addTextContent(text).isError(false).build()
         } catch {
@@ -265,14 +264,14 @@ private[mcp] object ToolOutput {
 
   private def summaryJson(toolName: String, r: ToolResult, filePath: String): String = {
     val fields = scala.collection.mutable.ArrayBuffer.empty[(String, String)]
-    fields += ("file"  -> jstr(filePath))
+    fields += ("file" -> jstr(filePath))
     r.found.foreach(v => fields += ("found" -> v.toString))
     r.truncated.foreach(v => fields += ("truncated" -> v.toString))
-    fields += ("nodes" -> r.nodeCount.toString)
-    fields += ("edges" -> r.edgeCount.toString)
+    fields += ("nodes"        -> r.nodeCount.toString)
+    fields += ("edges"        -> r.edgeCount.toString)
     fields += ("previewNodes" -> jarr(r.previewNodeIds.map(jstr)))
-    fields += ("readHints" -> jarr(readHintsFor(toolName, filePath).map(jstr)))
-    fields += ("note" -> jstr("response written to disk; read with jq <file>. Pass mode=\"inline\" to inline."))
+    fields += ("readHints"    -> jarr(readHintsFor(toolName, filePath).map(jstr)))
+    fields += ("note"         -> jstr("response written to disk; read with jq <file>. Pass mode=\"inline\" to inline."))
     fields.map { case (k, v) => s"  ${jstr(k)}: $v" }.mkString("{\n", ",\n", "\n}")
   }
 
@@ -322,11 +321,11 @@ private[mcp] object Schemas {
       |      "description": "auto (default): inline if response < 8KB, else write target/call-graph/N.json and return a summary. inline: always return full JSON. file: always write to disk."
       |    }""".stripMargin
 
-  // `worktree` snippet is shared by all tools (incl. graphIndex). Default = main checkout only.
+  // `worktree` snippet is shared by all tools (incl. graphIndex); REQUIRED on every one.
   private val worktreeProp: String =
     """    "worktree": {
       |      "type": "string",
-      |      "description": "Optional git worktree name under .worktrees/. Default: serve the MAIN checkout only — sibling worktrees are excluded so their semanticdb never contaminates the graph. Set to a worktree name to query THAT worktree in isolation (and write overflow files to its own target/call-graph)."
+      |      "description": "REQUIRED worktree selector — there is no default. Pass \".\" to query the MAIN checkout, or a bare worktree name under .worktrees/ to query THAT worktree in isolation (sibling worktrees never contaminate each other's graph; overflow files land in the selected checkout's target/call-graph). Forcing an explicit choice prevents silently serving a stale main-checkout graph while you work in a worktree."
       |    }""".stripMargin
 
   val graphIndex: String =
@@ -335,6 +334,7 @@ private[mcp] object Schemas {
        |  "properties": {
        |$worktreeProp
        |  },
+       |  "required": ["worktree"],
        |  "additionalProperties": false
        |}""".stripMargin
 
@@ -347,7 +347,7 @@ private[mcp] object Schemas {
        |$modeProp,
        |$worktreeProp
        |  },
-       |  "required": ["query"],
+       |  "required": ["query", "worktree"],
        |  "additionalProperties": false
        |}""".stripMargin
 
@@ -362,7 +362,7 @@ private[mcp] object Schemas {
        |$modeProp,
        |$worktreeProp
        |  },
-       |  "required": ["vertex"],
+       |  "required": ["vertex", "worktree"],
        |  "additionalProperties": false
        |}""".stripMargin
 
@@ -377,7 +377,7 @@ private[mcp] object Schemas {
        |$modeProp,
        |$worktreeProp
        |  },
-       |  "required": ["vertices"],
+       |  "required": ["vertices", "worktree"],
        |  "additionalProperties": false
        |}""".stripMargin
 
@@ -389,7 +389,7 @@ private[mcp] object Schemas {
        |$modeProp,
        |$worktreeProp
        |  },
-       |  "required": ["prefix"],
+       |  "required": ["prefix", "worktree"],
        |  "additionalProperties": false
        |}""".stripMargin
 }
@@ -566,15 +566,21 @@ private[mcp] object Args {
       case Some(other) => throw new ToolArgError(s"$key must be an array of regex strings, got $other")
     }
 
-  /** Parse the optional `worktree` arg. Must be a bare directory name (no separators / `..`)
-    * so it can only ever resolve under `.worktrees/`. Empty / absent => None (main checkout).
+  /** `"."` is the sentinel for the main checkout (None). Required, not optional: forcing an
+    * explicit choice stops us silently serving a stale main-checkout graph while in a worktree.
     */
-  def worktreeOpt(args: java.util.Map[String, AnyRef]): Option[String] =
+  def worktreeArg(args: java.util.Map[String, AnyRef]): Option[String] =
     Option(args).flatMap(a => Option(a.get("worktree"))) match {
-      case None | Some("")               => None
+      case None | Some("") =>
+        throw new ToolArgError(
+          "worktree is required: pass a worktree name under .worktrees/, or '.' for the main checkout"
+        )
+      case Some(".") => None
       case Some(s: String) =>
         if (s.contains("/") || s.contains("\\") || s.contains(".."))
-          throw new ToolArgError(s"worktree must be a bare directory name under .worktrees/, got '$s'")
+          throw new ToolArgError(
+            s"worktree must be a bare directory name under .worktrees/ (or '.' for main), got '$s'"
+          )
         Some(s)
       case Some(other) => throw new ToolArgError(s"worktree must be a string, got $other")
     }

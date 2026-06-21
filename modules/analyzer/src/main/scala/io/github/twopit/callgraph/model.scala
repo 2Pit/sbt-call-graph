@@ -13,6 +13,7 @@ final case class LoadedGraph(
     out: Map[String, Set[String]], // caller  → callees
     in: Map[String, Set[String]],  // callee  → callers
     meta: Map[String, NodeMeta],
+    overrides: Set[(String, String)] = Set.empty, // trait method → overriding impl method (CHA)
 ) {
   def nodeCount: Int = meta.size
   def edgeCount: Int = out.values.map(_.size).sum

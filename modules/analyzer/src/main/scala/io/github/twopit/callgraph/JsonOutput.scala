@@ -140,11 +140,15 @@ object JsonOutput {
     val edges = nodes.flatMap { s =>
       graph.out.getOrElse(s, Set.empty).toSeq.collect { case t if graph.meta.contains(t) => (s, t) }
     }
+    val overrides = graph.overrides.toSeq.filter { case (tr, im) =>
+      graph.meta.contains(tr) && graph.meta.contains(im)
+    }.sorted
     val fields = Seq(
       "nodeCount" -> nodes.size.toString,
       "edgeCount" -> edges.size.toString,
       "nodes"     -> arr(nodes.map(nodeJson(_, graph))),
       "edges"     -> arr(edges.map { case (s, t) => obj("from" -> str(s), "to" -> str(t)) }),
+      "overrides" -> arr(overrides.map { case (tr, im) => obj("trait" -> str(tr), "impl" -> str(im)) }),
     )
     obj(fields: _*)
   }

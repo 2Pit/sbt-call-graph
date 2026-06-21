@@ -87,12 +87,14 @@ object GraphLoader {
     val metaB = collection.mutable.Map.empty[String, NodeMeta]
     val outB  = collection.mutable.Map.empty[String, collection.mutable.Set[String]]
     val inB   = collection.mutable.Map.empty[String, collection.mutable.Set[String]]
+    val ovrB  = collection.mutable.Set.empty[(String, String)]
     allContribs.foreach { c =>
       metaB ++= c.meta
       c.edges.foreach { case (caller, callee) =>
         outB.getOrElseUpdate(caller, collection.mutable.Set.empty) += callee
         inB.getOrElseUpdate(callee, collection.mutable.Set.empty)  += caller
       }
+      ovrB ++= c.overrides
     }
 
     if (outB.isEmpty)
@@ -111,6 +113,7 @@ object GraphLoader {
       out = outB.map { case (k, v) => k -> v.toSet }.toMap,
       in = inB.map { case (k, v) => k -> v.toSet }.toMap,
       meta = metaB.toMap,
+      overrides = ovrB.toSet,
     )
   }
 
@@ -121,8 +124,9 @@ object GraphLoader {
   /** All graph data derived from a single .semanticdb file. */
   private case class FileContrib(
       meta: Map[String, NodeMeta],
-      edges: Seq[(String, String)],              // (caller, callee) pairs
-      kinds: Map[String, SymbolInformation.Kind], // symbols defined in this file
+      edges: Seq[(String, String)],                // (caller, callee) pairs
+      kinds: Map[String, SymbolInformation.Kind],  // symbols defined in this file
+      overrides: Seq[(String, String)] = Seq.empty, // (trait method, overriding impl method)
   )
 
   private val contribCache =
@@ -133,10 +137,11 @@ object GraphLoader {
       projectRoot: Option[Path],
       kindOf: collection.Map[String, SymbolInformation.Kind],
   ): FileContrib = {
-    val docs  = loadDocs(path)
-    val meta  = collection.mutable.Map.empty[String, NodeMeta]
-    val edges = collection.mutable.Set.empty[(String, String)]
-    val kinds = collection.mutable.Map.empty[String, SymbolInformation.Kind]
+    val docs      = loadDocs(path)
+    val meta      = collection.mutable.Map.empty[String, NodeMeta]
+    val edges     = collection.mutable.Set.empty[(String, String)]
+    val kinds     = collection.mutable.Map.empty[String, SymbolInformation.Kind]
+    val overrides = collection.mutable.Set.empty[(String, String)]
 
     docs.documents.foreach { doc =>
       doc.symbols.foreach { s =>
@@ -200,12 +205,15 @@ object GraphLoader {
             }
           }
 
-        // Override resolution (CHA)
+        // Override resolution (CHA): kept in `edges` for reachability AND recorded separately so the
+        // dump can expose the structural trait→impl relationship without name-suffix guessing.
         doc.symbols.foreach { sym =>
           if (sym.kind == SymbolInformation.Kind.METHOD && sym.overriddenSymbols.nonEmpty) {
             sym.overriddenSymbols.foreach { traitSym =>
-              if (!isSynthetic(traitSym) && traitSym != sym.symbol)
-                edges += (traitSym -> sym.symbol)
+              if (!isSynthetic(traitSym) && traitSym != sym.symbol) {
+                edges     += (traitSym -> sym.symbol)
+                overrides += (traitSym -> sym.symbol)
+              }
             }
           }
         }
@@ -224,7 +232,7 @@ object GraphLoader {
       }
     }
 
-    FileContrib(meta.toMap, edges.toSeq, kinds.toMap)
+    FileContrib(meta.toMap, edges.toSeq, kinds.toMap, overrides.toSeq)
   }
 
   // ---------------------------------------------------------------------------
